@@ -6,4 +6,5 @@ cbandits/__pycache__/
 cbandits/core/__pyache__
 cbandits/algorithms/__pycache__
 .ipynb_checkpoints/
+cbandits.egg-info/
 
