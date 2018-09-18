@@ -1,0 +1,8 @@
+god_damnit_bayes.ipynb
+testing_script.ipynb
+cbandits/data/
+__pycache__/
+cbandits/__pycache__/
+cbandits/core/__pyache__
+cbandits/algorithms/__pycache__
+
