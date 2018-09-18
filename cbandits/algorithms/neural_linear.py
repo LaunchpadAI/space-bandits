@@ -1,18 +1,3 @@
-# Copyright 2018 The TensorFlow Authors All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-
 """Thompson Sampling with linear posterior over a learnt deep representation."""
 
 from __future__ import absolute_import
@@ -30,7 +15,7 @@ from cbandits.algorithms.neural_bandit_model import NeuralBanditModel
 class NeuralLinearPosteriorSampling(BanditAlgorithm):
     """Full Bayesian linear regression on the last layer of a deep neural net."""
 
-    def __init__(self, name, hparams, optimizer='RMS'):
+    def __init__(self, name, hparams, memory_size=-1, optimizer='RMS'):
         self.name = name
         self.hparams = hparams
         self.latent_dim = self.hparams.layer_sizes[-1]
@@ -69,12 +54,14 @@ class NeuralLinearPosteriorSampling(BanditAlgorithm):
         self.data_h = ContextualDataset(
                             hparams.context_dim,
                             hparams.num_actions,
-                            intercept=False
+                            intercept=False,
+                            memory_size=memory_size
         )
         self.latent_h = ContextualDataset(
                             self.latent_dim,
                             hparams.num_actions,
-                            intercept=False
+                            intercept=False,
+                            memory_size=memory_size
         )
         
         self.bnn = NeuralBanditModel(optimizer, hparams, '{}-bnn'.format(name))

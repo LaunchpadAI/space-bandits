@@ -54,6 +54,7 @@ def init_neural_linear_model(
         training_freq=1,
         training_freq_network=50,
         training_epochs=100,
+        memory_size=-1,
         a0=6,
         b0=6,
         lambda_prior=0.25,
@@ -127,5 +128,5 @@ def init_neural_linear_model(
         b0=b0,
         lambda_prior=lambda_prior
     )
-    model = NeuralLinearPosteriorSampling(name, hparams_linear)
+    model = NeuralLinearPosteriorSampling(name, hparams_linear, memory_size=memory_size)
     return model
