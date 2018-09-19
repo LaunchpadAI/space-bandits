@@ -2,7 +2,7 @@ from distutils.core import setup
 
 setup(
     name='space_bandits',
-    version='0.0',
+    version='0.0.1',
     description='Contextual Bandits Library',
     author='Michael Klear',
     author_email='michael@launchpad.ai',

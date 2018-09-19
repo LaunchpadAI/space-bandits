@@ -5,9 +5,9 @@ from __future__ import print_function
 import numpy as np
 from scipy.stats import invgamma
 
-from cbandits.core.bandit_algorithm import BanditAlgorithm
-from cbandits.core.contextual_dataset import ContextualDataset
-from cbandits.algorithms.neural_bandit_model import NeuralBanditModel
+from space_bandits.core.bandit_algorithm import BanditAlgorithm
+from space_bandits.core.contextual_dataset import ContextualDataset
+from space_bandits.algorithms.neural_bandit_model import NeuralBanditModel
 import tensorflow as tf
 
 import os
@@ -55,7 +55,7 @@ def load_linear_model(path):
         model = pickle.load(f)
     return model    
 
-def init_neural_linear_model(
+def init_neural_model(
         num_actions,
         context_dim,
         name='neural_model',
