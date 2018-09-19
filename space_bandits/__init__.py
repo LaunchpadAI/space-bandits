@@ -36,7 +36,7 @@ def init_linear_model(
         
         lambda_prior (float): lambda prior parameter(default 0.25)
     """
-    from cbandits.algorithms.linear import LinearFullPosteriorSampling
+    from space_bandits.algorithms.linear import LinearFullPosteriorSampling
     hparams_linear = tf.contrib.training.HParams(
                         num_actions=num_actions,
                         context_dim=context_dim,
@@ -50,7 +50,7 @@ def init_linear_model(
 
 def load_linear_model(path):
     """loads linear model from path argument"""
-    from cbandits.algorithms.linear import LinearFullPosteriorSampling
+    from space_bandits.algorithms.linear import LinearFullPosteriorSampling
     with open(path, 'rb') as f:
         model = pickle.load(f)
     return model    
@@ -151,14 +151,14 @@ def init_neural_model(
         'lambda_prior':lambda_prior,
     }
     
-    from cbandits.algorithms.neural_linear import NeuralLinearPosteriorSampling
+    from space_bandits.algorithms.neural_linear import NeuralLinearPosteriorSampling
     model = NeuralLinearPosteriorSampling(name, arguments)
     
     return model
 
 def load_neural_model(path):
     """loads linear model from path argument"""
-    from cbandits.algorithms.linear import LinearFullPosteriorSampling
+    from space_bandits.algorithms.linear import LinearFullPosteriorSampling
     shutil.unpack_archive(path, extract_dir='tmp')
     pickle_path = os.path.join('tmp', 'master.pkl')
     with open(pickle_path, 'rb') as f:

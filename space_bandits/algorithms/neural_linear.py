@@ -115,6 +115,16 @@ class NeuralLinearPosteriorSampling(BanditAlgorithm):
         )
         return hparams    
     
+    def get_representation(self, context):
+        """
+        Returns the latent feature vector from the neural network.
+        This vector is called z in the Google Brain paper.
+        """
+        with self.bnn.graph.as_default():
+            c = context.reshape((1, self.context_dim))
+            z_context = self.bnn.sess.run(self.bnn.nn, feed_dict={self.bnn.x: c})
+        return z_context
+    
     def expected_values(self, context):
         """
         Computes expected values from context. Does not consider uncertainty.
@@ -123,9 +133,12 @@ class NeuralLinearPosteriorSampling(BanditAlgorithm):
         Returns:
           expected reward vector.
         """
+        # Compute last-layer representation for the current context
+        z_context = self.get_representation(context)
+        
         # Compute sampled expected values, intercept is last component of beta
         vals = [
-            np.dot(self.mu[i][:-1], context.T) + self.mu[i][-1]
+            np.dot(self.mu[i][:], z_context.T)
             for i in range(self.hparams.num_actions)
         ]
         return vals
@@ -153,9 +166,7 @@ class NeuralLinearPosteriorSampling(BanditAlgorithm):
             ]
 
         # Compute last-layer representation for the current context
-        with self.bnn.graph.as_default():
-            c = context.reshape((1, self.context_dim))
-            z_context = self.bnn.sess.run(self.bnn.nn, feed_dict={self.bnn.x: c})
+        z_context = self.get_representation(context)
 
         # Apply Thompson Sampling to last-layer representation
         vals = [
@@ -177,6 +188,7 @@ class NeuralLinearPosteriorSampling(BanditAlgorithm):
     def update(self, context, action, reward):
         """Updates the posterior using linear bayesian regression formula."""
 
+        
         self.t += 1
         self.data_h.add(context, action, reward)
         c = context.reshape((1, self.context_dim))
