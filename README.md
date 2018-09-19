@@ -1,4 +1,4 @@
-# Deep Contextual Bandits Library
+# SpaceBandits: a Deep Bayesian Contextual Bandits Library
 
 This is a deep contextual bandits library currently under development.
 
