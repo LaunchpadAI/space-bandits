@@ -7,4 +7,6 @@ space_bandits/core/__pyache__
 space_bandits/algorithms/__pycache__
 .ipynb_checkpoints/
 space_bandits.egg-info/
+MANIFEST
+dist
 
