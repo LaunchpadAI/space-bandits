@@ -1,8 +1,8 @@
-# SpaceBandits: Contextual Bandits for the Future
+# SpaceBandits: Contextual Bandits from the Future
 
 It's 2018 and AI is everywhere. Isn't it time for a package that makes Deep Bayesian Contextual Bandits models simple to deploy?<br><br>
 
-SpaceBandits takes the advanced models developed and experimented on in the Google Brain research paper [Deep Bayesian Bandits Showdown: An Empirical Comparison of Bayesian Deep Networks for Thompson Sampling](https://arxiv.org/pdf/1802.09127.pdf) and makes them easy to build and manage.
+SpaceBandits takes the advanced models developed and experimented on in the 2018 Google Brain research paper [Deep Bayesian Bandits Showdown: An Empirical Comparison of Bayesian Deep Networks for Thompson Sampling](https://arxiv.org/pdf/1802.09127.pdf) and makes them easy to build and manage.
 
 ## Usage
 
