@@ -1,4 +1,18 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import numpy as np
+from scipy.stats import invgamma
+
+from cbandits.core.bandit_algorithm import BanditAlgorithm
+from cbandits.core.contextual_dataset import ContextualDataset
+from cbandits.algorithms.neural_bandit_model import NeuralBanditModel
 import tensorflow as tf
+
+import os
+import pickle
+import shutil
 
 def init_linear_model(
         num_actions,
@@ -34,12 +48,19 @@ def init_linear_model(
     model = LinearFullPosteriorSampling(name, hparams_linear)
     return model
 
+def load_linear_model(path):
+    """loads linear model from path argument"""
+    from cbandits.algorithms.linear import LinearFullPosteriorSampling
+    with open(path, 'rb') as f:
+        model = pickle.load(f)
+    return model    
+
 def init_neural_linear_model(
         num_actions,
         context_dim,
         name='neural_model',
         init_scale=0.3,
-        activation=tf.nn.relu,
+        activation='relu',
         layer_sizes=[50],
         batch_size=512,
         activate_decay=True,
@@ -104,29 +125,55 @@ def init_neural_linear_model(
         
         lambda_prior (float): lambda prior parameter(default 0.25)
     """
+    arguments = {
+        'num_actions':num_actions,
+        'context_dim':context_dim,
+        'name':name,
+        'init_scale':init_scale,
+        'activation':activation,
+        'layer_sizes':layer_sizes,
+        'batch_size':batch_size,
+        'activate_decay':activate_decay,
+        'initial_lr':initial_lr,
+        'max_grad_norm':max_grad_norm,
+        'show_training':show_training,
+        'freq_summary':freq_summary,
+        'buffer_s':buffer_s,
+        'initial_pulls':initial_pulls,
+        'reset_lr':reset_lr,
+        'lr_decay_rate':lr_decay_rate,
+        'training_freq':training_freq,
+        'training_freq_network':training_freq_network,
+        'training_epochs':training_epochs,
+        'memory_size':memory_size,
+        'a0':a0,
+        'b0':b0,
+        'lambda_prior':lambda_prior,
+    }
+    
     from cbandits.algorithms.neural_linear import NeuralLinearPosteriorSampling
-    hparams_linear = tf.contrib.training.HParams(
-        num_actions=num_actions,
-        context_dim=context_dim,
-        init_scale=init_scale,
-        activation=activation,
-        layer_sizes=layer_sizes,
-        batch_size=batch_size,
-        activate_decay=activate_decay,
-        initial_lr=initial_lr,
-        max_grad_norm=max_grad_norm,
-        show_training=show_training,
-        freq_summary=freq_summary,
-        buffer_s=buffer_s,
-        initial_pulls=initial_pulls,
-        reset_lr=reset_lr,
-        lr_decay_rate=lr_decay_rate,
-        training_freq=training_freq,
-        training_freq_network=training_freq_network,
-        training_epochs=training_epochs,
-        a0=a0,
-        b0=b0,
-        lambda_prior=lambda_prior
-    )
-    model = NeuralLinearPosteriorSampling(name, hparams_linear, memory_size=memory_size)
+    model = NeuralLinearPosteriorSampling(name, arguments)
+    
+    return model
+
+def load_neural_model(path):
+    """loads linear model from path argument"""
+    from cbandits.algorithms.linear import LinearFullPosteriorSampling
+    shutil.unpack_archive(path, extract_dir='tmp')
+    pickle_path = os.path.join('tmp', 'master.pkl')
+    with open(pickle_path, 'rb') as f:
+        model = pickle.load(f)
+    model.hparams = model.get_hparams()
+    model.bnn = NeuralBanditModel(model.arguments['optimizer'], model.hparams, '{}-bnn'.format(model.name))
+    weights_path = os.path.join('tmp', 'weights')
+    with model.bnn.graph.as_default():
+        sess = tf.Session()
+        saver = tf.train.Saver()
+        saver.restore(sess, weights_path)
+    os.remove(pickle_path)
+    os.remove(weights_path + '.data-00000-of-00001')
+    os.remove(os.path.join('tmp', 'checkpoint'))
+    os.remove(os.path.join('tmp', 'weights.meta'))
+    os.remove(os.path.join('tmp', 'weights.index'))
+    os.rmdir('tmp')
     return model

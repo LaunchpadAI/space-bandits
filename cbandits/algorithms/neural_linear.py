@@ -10,15 +10,29 @@ from scipy.stats import invgamma
 from cbandits.core.bandit_algorithm import BanditAlgorithm
 from cbandits.core.contextual_dataset import ContextualDataset
 from cbandits.algorithms.neural_bandit_model import NeuralBanditModel
+import tensorflow as tf
+
+import os
+import pickle
+import shutil
 
 
 class NeuralLinearPosteriorSampling(BanditAlgorithm):
     """Full Bayesian linear regression on the last layer of a deep neural net."""
 
-    def __init__(self, name, hparams, memory_size=-1, optimizer='RMS'):
+    def __init__(self, name, arguments, optimizer='RMS'):
+        self.arguments = arguments
+        self.arguments['optimizer'] = optimizer
+        self.hparams = self.get_hparams()
         self.name = name
-        self.hparams = hparams
         self.latent_dim = self.hparams.layer_sizes[-1]
+        self.num_actions = self.hparams.num_actions
+        self.context_dim = self.hparams.context_dim
+        self.initial_pulls = self.hparams.initial_pulls
+        self.reset_lr = self.hparams.reset_lr
+        
+        self.master_params = dict()
+        
 
         # Gaussian prior for each beta_i
         self._lambda_prior = self.hparams.lambda_prior
@@ -44,39 +58,74 @@ class NeuralLinearPosteriorSampling(BanditAlgorithm):
         self.b = [self._b0 for _ in range(self.hparams.num_actions)]
 
         # Regression and NN Update Frequency
-        self.update_freq_lr = hparams.training_freq
-        self.update_freq_nn = hparams.training_freq_network
+        self.update_freq_lr = self.hparams.training_freq
+        self.update_freq_nn = self.hparams.training_freq_network
 
         self.t = 0
         self.optimizer_n = optimizer
 
-        self.num_epochs = hparams.training_epochs
+        self.num_epochs = self.hparams.training_epochs
+        
+        memory_size = arguments['memory_size']
         self.data_h = ContextualDataset(
-                            hparams.context_dim,
-                            hparams.num_actions,
+                            self.hparams.context_dim,
+                            self.hparams.num_actions,
                             intercept=False,
                             memory_size=memory_size
         )
         self.latent_h = ContextualDataset(
                             self.latent_dim,
-                            hparams.num_actions,
+                            self.hparams.num_actions,
                             intercept=False,
                             memory_size=memory_size
         )
-        
-        self.bnn = NeuralBanditModel(optimizer, hparams, '{}-bnn'.format(name))
 
+        self.bnn = NeuralBanditModel(optimizer, self.hparams, '{}-bnn'.format(name))
+
+    def get_hparams(self):
+        """converts arguments into hparams object."""
+        arguments = self.arguments
+        if arguments['activation'] == 'relu':
+            activation_function = tf.nn.relu
+        else:
+            raise Exception("activation function not recognized: {}.".format(arguments.activation),
+                            "Please pass string 'relu' (only supported option at this time.)")
+        hparams = tf.contrib.training.HParams(
+            num_actions=arguments['num_actions'],
+            context_dim=arguments['context_dim'],
+            init_scale=arguments['init_scale'],
+            activation=activation_function,
+            layer_sizes=arguments['layer_sizes'],
+            batch_size=arguments['batch_size'],
+            activate_decay=arguments['activate_decay'],
+            initial_lr=arguments['initial_lr'],
+            max_grad_norm=arguments['max_grad_norm'],
+            show_training=arguments['show_training'],
+            freq_summary=arguments['freq_summary'],
+            buffer_s=arguments['buffer_s'],
+            initial_pulls=arguments['initial_pulls'],
+            reset_lr=arguments['reset_lr'],
+            lr_decay_rate=arguments['lr_decay_rate'],
+            training_freq=arguments['training_freq'],
+            training_freq_network=arguments['training_freq_network'],
+            training_epochs=arguments['training_epochs'],
+            a0=arguments['a0'],
+            b0=arguments['b0'],
+            lambda_prior=arguments['lambda_prior']
+        )
+        return hparams
+        
     def _sample(self, context):
         # Sample sigma2, and beta conditional on sigma2
         sigma2_s = [
             self.b[i] * invgamma.rvs(self.a[i])
-            for i in range(self.hparams.num_actions)
+            for i in range(self.num_actions)
         ]
 
         try:
             beta_s = [
               np.random.multivariate_normal(self.mu[i], sigma2_s[i] * self.cov[i])
-              for i in range(self.hparams.num_actions)
+              for i in range(self.num_actions)
             ]
         except np.linalg.LinAlgError as e:
             # Sampling could fail if covariance is not positive definite
@@ -85,17 +134,17 @@ class NeuralLinearPosteriorSampling(BanditAlgorithm):
             d = self.latent_dim
             beta_s = [
               np.random.multivariate_normal(np.zeros((d)), np.eye(d))
-              for i in range(self.hparams.num_actions)
+              for i in range(self.num_actions)
             ]
 
         # Compute last-layer representation for the current context
         with self.bnn.graph.as_default():
-            c = context.reshape((1, self.hparams.context_dim))
+            c = context.reshape((1, self.context_dim))
             z_context = self.bnn.sess.run(self.bnn.nn, feed_dict={self.bnn.x: c})
 
         # Apply Thompson Sampling to last-layer representation
         vals = [
-            np.dot(beta_s[i], z_context.T) for i in range(self.hparams.num_actions)
+            np.dot(beta_s[i], z_context.T) for i in range(self.num_actions)
         ]
         return vals
         
@@ -104,8 +153,8 @@ class NeuralLinearPosteriorSampling(BanditAlgorithm):
         """Samples beta's from posterior, and chooses best action accordingly."""
 
         # Round robin until each action has been selected "initial_pulls" times
-        if self.t < self.hparams.num_actions * self.hparams.initial_pulls:
-            return self.t % self.hparams.num_actions
+        if self.t < self.num_actions * self.initial_pulls:
+            return self.t % self.num_actions
         else:
             vals = self._sample(context)
         return np.argmax(vals)
@@ -115,14 +164,14 @@ class NeuralLinearPosteriorSampling(BanditAlgorithm):
 
         self.t += 1
         self.data_h.add(context, action, reward)
-        c = context.reshape((1, self.hparams.context_dim))
+        c = context.reshape((1, self.context_dim))
         z_context = self.bnn.sess.run(self.bnn.nn, feed_dict={self.bnn.x: c})
         self.latent_h.add(z_context, action, reward)
 
         # Retrain the network on the original data (data_h)
         if self.t % self.update_freq_nn == 0:
 
-            if self.hparams.reset_lr:
+            if self.reset_lr:
                 self.bnn.assign_lr()
             self.bnn.train(self.data_h, self.num_epochs)
 
@@ -162,6 +211,33 @@ class NeuralLinearPosteriorSampling(BanditAlgorithm):
             self.precision[action_v] = precision_a
             self.a[action_v] = a_post
             self.b[action_v] = b_post
+            
+    def save(self, path):
+        """saves model to path"""
+        os.mkdir('tmp')
+        bnn_temp = self.bnn
+        self.bnn = None
+        hparams_temp = self.hparams
+        self.hparams = None
+        pickle_path = os.path.join('tmp', 'master.pkl')
+        with open(pickle_path, 'wb') as f:
+            pickle.dump(self, f)
+        self.bnn = bnn_temp
+        weights_path = os.path.join('tmp', 'weights')
+        with self.bnn.graph.as_default():
+            init_op = tf.global_variables_initializer()
+            sess = tf.Session()
+            sess.run(init_op)
+            saver = tf.train.Saver()
+            saver.save(sess, weights_path)
+        shutil.make_archive(path, 'zip', 'tmp')
+        os.remove(pickle_path)
+        os.remove(weights_path + '.data-00000-of-00001')
+        os.remove(os.path.join('tmp', 'checkpoint'))
+        os.remove(os.path.join('tmp', 'weights.meta'))
+        os.remove(os.path.join('tmp', 'weights.index'))
+        os.rmdir('tmp')
+        self.hparams = hparams_temp
 
     @property
     def a0(self):

@@ -10,6 +10,8 @@ from scipy.stats import invgamma
 from cbandits.core.bandit_algorithm import BanditAlgorithm
 from cbandits.core.contextual_dataset import ContextualDataset
 
+import pickle
+
 
 class LinearFullPosteriorSampling(BanditAlgorithm):
     """Thompson Sampling with independent linear models and unknown noise var."""
@@ -139,6 +141,11 @@ class LinearFullPosteriorSampling(BanditAlgorithm):
         self.precision[action] = precision_a
         self.a[action] = a_post
         self.b[action] = b_post
+            
+    def save(self, path):
+        """saves model to path"""
+        with open(path, 'wb') as f:
+            pickle.dump(self, f)
 
     @property
     def a0(self):
