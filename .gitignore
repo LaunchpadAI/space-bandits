@@ -1,10 +1,10 @@
 god_damnit_bayes.ipynb
 testing_script.ipynb
-cbandits/data/
+space_bandits/data/
 __pycache__/
-cbandits/__pycache__/
-cbandits/core/__pyache__
-cbandits/algorithms/__pycache__
+space_bandits/__pycache__/
+space_bandits/core/__pyache__
+space_bandits/algorithms/__pycache__
 .ipynb_checkpoints/
-cbandits.egg-info/
+space_bandits.egg-info/
 
