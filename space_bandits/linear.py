@@ -7,8 +7,8 @@ from __future__ import print_function
 import numpy as np
 from scipy.stats import invgamma
 
-from ..core.bandit_algorithm import BanditAlgorithm
-from ..core.contextual_dataset import ContextualDataset
+from .bandit_algorithm import BanditAlgorithm
+from .contextual_dataset import ContextualDataset
 
 import pickle
 

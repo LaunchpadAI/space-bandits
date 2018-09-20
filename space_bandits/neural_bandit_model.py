@@ -9,7 +9,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-from ..core.bayesian_nn import BayesianNN
+from .bayesian_nn import BayesianNN
 
 
 class NeuralBanditModel(BayesianNN):
