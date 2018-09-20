@@ -2,11 +2,11 @@ from distutils.core import setup
 
 setup(
     name='space_bandits',
-    version='0.0.3',
+    version='0.0.4',
     description='Contextual Bandits Library',
     author='Michael Klear',
     author_email='michael@launchpad.ai',
-    url='https://github.com/AlliedToasters/space_bandits/archive/v0.0.3.tar.gz',
+    url='https://github.com/AlliedToasters/space_bandits/archive/v0.0.4.tar.gz',
     install_requires=[
       'tensorflow>=1.5.0',
       'numpy>=1.14.3',
