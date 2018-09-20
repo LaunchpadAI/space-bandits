@@ -10,4 +10,5 @@ space_bandits.egg-info/
 MANIFEST
 dist
 graph_neural_model-bnn/
+build/
 
