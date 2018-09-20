@@ -7,9 +7,9 @@ from __future__ import print_function
 import numpy as np
 from scipy.stats import invgamma
 
-from space_bandits.core.bandit_algorithm import BanditAlgorithm
-from space_bandits.core.contextual_dataset import ContextualDataset
-from space_bandits.algorithms.neural_bandit_model import NeuralBanditModel
+from ..core.bandit_algorithm import BanditAlgorithm
+from ..core.contextual_dataset import ContextualDataset
+from .neural_bandit_model import NeuralBanditModel
 import tensorflow as tf
 
 import os
