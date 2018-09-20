@@ -5,9 +5,9 @@ from __future__ import print_function
 import numpy as np
 from scipy.stats import invgamma
 
-from space_bandits.core.bandit_algorithm import BanditAlgorithm
-from space_bandits.core.contextual_dataset import ContextualDataset
-from space_bandits.algorithms.neural_bandit_model import NeuralBanditModel
+from .core.bandit_algorithm import BanditAlgorithm
+from .core.contextual_dataset import ContextualDataset
+from .algorithms.neural_bandit_model import NeuralBanditModel
 import tensorflow as tf
 
 import os
@@ -36,7 +36,7 @@ def init_linear_model(
         
         lambda_prior (float): lambda prior parameter(default 0.25)
     """
-    from space_bandits.algorithms.linear import LinearFullPosteriorSampling
+    from .algorithms.linear import LinearFullPosteriorSampling
     hparams_linear = tf.contrib.training.HParams(
                         num_actions=num_actions,
                         context_dim=context_dim,
@@ -50,7 +50,7 @@ def init_linear_model(
 
 def load_linear_model(path):
     """loads linear model from path argument"""
-    from space_bandits.algorithms.linear import LinearFullPosteriorSampling
+    from .algorithms.linear import LinearFullPosteriorSampling
     with open(path, 'rb') as f:
         model = pickle.load(f)
     return model    
@@ -151,14 +151,14 @@ def init_neural_model(
         'lambda_prior':lambda_prior,
     }
     
-    from space_bandits.algorithms.neural_linear import NeuralLinearPosteriorSampling
+    from .algorithms.neural_linear import NeuralLinearPosteriorSampling
     model = NeuralLinearPosteriorSampling(name, arguments)
     
     return model
 
 def load_neural_model(path):
     """loads linear model from path argument"""
-    from space_bandits.algorithms.linear import LinearFullPosteriorSampling
+    from .algorithms.linear import LinearFullPosteriorSampling
     shutil.unpack_archive(path, extract_dir='tmp')
     pickle_path = os.path.join('tmp', 'master.pkl')
     with open(pickle_path, 'rb') as f:
