@@ -5,6 +5,8 @@ from __future__ import print_function
 import numpy as np
 from scipy.stats import invgamma
 
+criokey
+
 from .bandit_algorithm import BanditAlgorithm
 from .contextual_dataset import ContextualDataset
 from .neural_bandit_model import NeuralBanditModel
