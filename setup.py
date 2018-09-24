@@ -10,7 +10,8 @@ setup(
     install_requires=[
       'tensorflow>=1.5.0',
       'numpy>=1.14.3',
-      'scipy>=0.19.1'
+      'scipy>=0.19.1',
+      'pandas>=0.21.0'
     ],
     packages=['space_bandits']
 )

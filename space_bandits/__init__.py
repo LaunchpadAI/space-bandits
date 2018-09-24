@@ -59,6 +59,7 @@ def init_neural_model(
         num_actions,
         context_dim,
         name='neural_model',
+        do_scaling=False,
         init_scale=0.3,
         activation='relu',
         layer_sizes=[50],
@@ -152,7 +153,7 @@ def init_neural_model(
     }
     
     from .neural_linear import NeuralLinearPosteriorSampling
-    model = NeuralLinearPosteriorSampling(name, arguments)
+    model = NeuralLinearPosteriorSampling(name, arguments, do_scaling=do_scaling)
     
     return model
 

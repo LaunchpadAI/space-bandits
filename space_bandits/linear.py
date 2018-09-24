@@ -71,7 +71,7 @@ class LinearFullPosteriorSampling(BanditAlgorithm):
             np.dot(self.mu[i][:-1], context.T) + self.mu[i][-1]
             for i in range(self.hparams.num_actions)
         ]
-        return vals
+        return np.array(vals)
         
     def _sample(self, context):
         """
@@ -81,32 +81,41 @@ class LinearFullPosteriorSampling(BanditAlgorithm):
         Returns:
           action: sampled reward vector."""
         # Sample sigma2, and beta conditional on sigma2
-        sigma2_s = [
-            self.b[i] * invgamma.rvs(self.a[i])
-            for i in range(self.hparams.num_actions)
-        ]
-
+        context = context.reshape(-1, self.hparams.context_dim)
+        n_rows = len(context)
+        a_projected = np.repeat(np.array(self.a)[np.newaxis, :], n_rows, axis=0)
+        sigma2_s = self.b * invgamma.rvs(a_projected)
+        if n_rows == 1:
+            sigma2_s = sigma2_s.reshape(1, -1)
+        beta_s = []
         try:
-            beta_s = [
-              np.random.multivariate_normal(self.mu[i], sigma2_s[i] * self.cov[i])
-              for i in range(self.hparams.num_actions)
-            ]
+            for i in range(self.hparams.num_actions):
+                mus = np.repeat(self.mu[i][np.newaxis, :], n_rows, axis=0)
+                s2s = sigma2_s[:, i]
+                rep = np.repeat(s2s[:, np.newaxis], self.hparams.context_dim+1, axis=1)
+                rep = np.repeat(rep[:, :, np.newaxis], self.hparams.context_dim+1, axis=2)
+                covs = np.repeat(self.cov[i][np.newaxis, :, :], n_rows, axis=0)
+                covs = rep * covs
+                multivariates = [np.random.multivariate_normal(mus[j], covs[j]) for j in range(n_rows)]
+                beta_s.append(multivariates)
         except np.linalg.LinAlgError as e:
             # Sampling could fail if covariance is not positive definite
+            # Todo: Fix This
             print('Exception when sampling from {}.'.format(self.name))
             print('Details: {} | {}.'.format(e.message, e.args))
             d = self.hparams.context_dim + 1
-            beta_s = [
-              np.random.multivariate_normal(np.zeros((d)), np.eye(d))
-              for i in range(self.hparams.num_actions)
-            ]
+            for i in range(self.hparams.num_actions):
+                multivariates = [np.random.multivariate_normal(np.zeros((d)), np.eye(d)) for j in range(n_rows)]
+                beta_s.append(multivariates)
+        beta_s = np.array(beta_s)
+
 
         # Compute sampled expected values, intercept is last component of beta
         vals = [
-            np.dot(beta_s[i][:-1], context.T) + beta_s[i][-1]
+            (beta_s[i, :, :-1] * context).sum(axis=-1) + beta_s[i, :, -1]
             for i in range(self.hparams.num_actions)
         ]
-        return vals
+        return np.array(vals)
 
     def action(self, context):
         """Samples beta's from posterior, and chooses best action accordingly.
@@ -130,10 +139,13 @@ class LinearFullPosteriorSampling(BanditAlgorithm):
           action: Last observed action.
           reward: Last observed reward.
         """
-
         self.t += 1
         self.data_h.add(context, action, reward)
+        
+        self._update_action(action)
 
+    def _update_action(self, action):
+        """Updates posterior for given action"""
         # Update posterior of action with formulas: \beta | x,y ~ N(mu_q, cov_q)
         x, y = self.data_h.get_data(action)
 
@@ -156,6 +168,37 @@ class LinearFullPosteriorSampling(BanditAlgorithm):
         self.precision[action] = precision_a
         self.a[action] = a_post
         self.b[action] = b_post
+        
+    def fit(self, contexts, actions, rewards, num_updates=100):
+        """Inputs bulk data for training.
+        Args:
+          contexts: Set of observed contexts.
+          actions: Corresponding list of actions.
+          rewards: Corresponding list of rewards.
+        """
+        data_length = len(rewards)
+        self.data_h._ingest_data(contexts, actions, rewards)
+        self.t += data_length
+        #update posterior on ingested data
+        for n in range(num_updates):
+            for action in range(self.data_h.num_actions):
+                self._update_action(action)
+                
+    def predict(self, contexts, thompson=True):
+        """Takes a list or array-like of contexts and batch predicts on them"""
+        if thompson:
+            reward_matrix = self._sample(contexts)
+        else:
+            reward_matrix = self.expected_values(contexts)
+        return np.argmax(reward_matrix, axis=0)
+
+    def classic_predict(self, contexts, thompson=True):
+        """Takes a list or array-like of contexts and batch predicts on them"""
+        if thompson:
+            rewards = np.array([np.argmax(self._sample(c.reshape(1, -1))) for c in contexts])
+        else:
+            rewards = np.array([np.argmax(self.expected_values(c.reshape(1, -1))) for c in contexts])
+        return rewards
             
     def save(self, path):
         """saves model to path"""

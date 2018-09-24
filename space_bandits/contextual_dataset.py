@@ -5,7 +5,8 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-
+import pandas as pd
+from scipy.sparse import coo_matrix
 
 class ContextualDataset(object):
     """The buffer is able to append new data, and sample random minibatches."""
@@ -80,6 +81,46 @@ class ContextualDataset(object):
             self.actions = actions
         if rewards is not None:
             self.rewards = rewards
+
+    def _ingest_data(self, contexts, actions, rewards):
+        """Ingests bulk data."""
+        if isinstance(rewards, pd.DataFrame) or isinstance(rewards, pd.Series):
+            rewards = rewards.values
+        if isinstance(actions, pd.DataFrame) or isinstance(actions, pd.Series):
+            actions = actions.values
+        if isinstance(contexts, pd.DataFrame) or isinstance(contexts, pd.Series):
+            contexts = contexts.values
+        data_length = len(rewards)
+        if self.memory_size != -1:
+            if data_length + len(self.rewards) > self.memory_size:
+                print('Cannot add more examples: ')
+                raise Exception('Too many examples for specified memory_size.')
+        try:
+            contexts.reshape(-1, self.context_dim)
+        except:
+            print('Got bad data contexts shape: ', contexts.shape)
+            raise Exception('Expected: ({}, {})'.format(data_length, self.context_dim))
+        if self.intercept:
+            #add intercepts
+            contexts = np.concatenate([contexts, np.ones((data_length, 1))], axis=1)
+        try:
+            assert len(contexts) == data_length
+            assert len(actions) == data_length
+        except AssertionError:
+            raise AssertionError('Data lengths inconsistent.')
+        if self.contexts is None:
+            self.contexts = contexts
+        else:
+            self.contexts = np.vstack((self.contexts, contexts))
+
+        rewards_array = coo_matrix((rewards, (np.arange(data_length), actions))).todense()
+        rewards_array = np.array(rewards_array)
+        if self.rewards is None:
+            self.rewards = rewards_array
+        else:
+            self.rewards = np.vstack((self.rewards, rewards_array))
+
+        self.actions = self.actions + list(actions)
 
     def get_batch(self, batch_size):
         """Returns a random minibatch of (contexts, rewards) with batch_size."""

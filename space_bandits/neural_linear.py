@@ -20,9 +20,10 @@ import shutil
 class NeuralLinearPosteriorSampling(BanditAlgorithm):
     """Full Bayesian linear regression on the last layer of a deep neural net."""
 
-    def __init__(self, name, arguments, optimizer='RMS'):
+    def __init__(self, name, arguments, do_scaling=False, optimizer='RMS'):
         self.arguments = arguments
         self.arguments['optimizer'] = optimizer
+        self.do_scaling = do_scaling
         self.hparams = self.get_hparams()
         self.name = name
         self.latent_dim = self.hparams.layer_sizes[-1]
@@ -113,17 +114,29 @@ class NeuralLinearPosteriorSampling(BanditAlgorithm):
             b0=arguments['b0'],
             lambda_prior=arguments['lambda_prior']
         )
-        return hparams    
+        return hparams
     
     def get_representation(self, context):
         """
         Returns the latent feature vector from the neural network.
         This vector is called z in the Google Brain paper.
         """
+        context = context.reshape(-1, self.hparams.context_dim)
+        if self.do_scaling:
+            context = self._scale_data(context)
+        n_rows = len(context)
         with self.bnn.graph.as_default():
-            c = context.reshape((1, self.context_dim))
+            c = context.reshape((n_rows, self.context_dim))
             z_context = self.bnn.sess.run(self.bnn.nn, feed_dict={self.bnn.x: c})
         return z_context
+    
+    def _scale_data(self, context):
+        """scales input contexts based on stored data."""
+        means = self.data_h.contexts.mean(axis=0)
+        stds = self.data_h.contexts.std(axis=0)
+        context -= means
+        context /= stds
+        return context
     
     def expected_values(self, context):
         """
@@ -138,42 +151,51 @@ class NeuralLinearPosteriorSampling(BanditAlgorithm):
         
         # Compute sampled expected values, intercept is last component of beta
         vals = [
-            np.dot(self.mu[i][:], z_context.T)
+            np.dot(self.mu[i], z_context.T)
             for i in range(self.hparams.num_actions)
         ]
-        return vals
+        return np.array(vals)
         
     def _sample(self, context):
         # Sample sigma2, and beta conditional on sigma2
-        sigma2_s = [
-            self.b[i] * invgamma.rvs(self.a[i])
-            for i in range(self.num_actions)
-        ]
-
+        context = context.reshape(-1, self.hparams.context_dim)
+        n_rows = len(context)
+        d = self.mu[0].shape[0]
+        a_projected = np.repeat(np.array(self.a)[np.newaxis, :], n_rows, axis=0)
+        sigma2_s = self.b * invgamma.rvs(a_projected)
+        if n_rows == 1:
+            sigma2_s = sigma2_s.reshape(1, -1)
+        beta_s = []
         try:
-            beta_s = [
-              np.random.multivariate_normal(self.mu[i], sigma2_s[i] * self.cov[i])
-              for i in range(self.num_actions)
-            ]
+            for i in range(self.hparams.num_actions):
+                mus = np.repeat(self.mu[i][np.newaxis, :], n_rows, axis=0)
+                s2s = sigma2_s[:, i]
+                rep = np.repeat(s2s[:, np.newaxis], d, axis=1)
+                rep = np.repeat(rep[:, :, np.newaxis], d, axis=2)
+                covs = np.repeat(self.cov[i][np.newaxis, :, :], n_rows, axis=0)
+                covs = rep * covs
+                multivariates = [np.random.multivariate_normal(mus[j], covs[j]) for j in range(n_rows)]
+                beta_s.append(multivariates)
         except np.linalg.LinAlgError as e:
             # Sampling could fail if covariance is not positive definite
-            print('Exception when sampling for {}.'.format(self.name))
+            # Todo: Fix This
+            print('Exception when sampling from {}.'.format(self.name))
             print('Details: {} | {}.'.format(e.message, e.args))
-            d = self.latent_dim
-            beta_s = [
-              np.random.multivariate_normal(np.zeros((d)), np.eye(d))
-              for i in range(self.num_actions)
-            ]
+            for i in range(self.hparams.num_actions):
+                multivariates = [np.random.multivariate_normal(np.zeros((d)), np.eye(d)) for j in range(n_rows)]
+                beta_s.append(multivariates)
+        beta_s = np.array(beta_s)
 
         # Compute last-layer representation for the current context
         z_context = self.get_representation(context)
 
-        # Apply Thompson Sampling to last-layer representation
+        # Apply Thompson Sampling
         vals = [
-            np.dot(beta_s[i], z_context.T) for i in range(self.num_actions)
+            (beta_s[i, :, :] * z_context).sum(axis=-1)
+            for i in range(self.hparams.num_actions)
         ]
-        return vals
-        
+        return np.array(vals)
+
         
     def action(self, context):
         """Samples beta's from posterior, and chooses best action accordingly."""
@@ -192,26 +214,38 @@ class NeuralLinearPosteriorSampling(BanditAlgorithm):
         self.t += 1
         self.data_h.add(context, action, reward)
         c = context.reshape((1, self.context_dim))
-        z_context = self.bnn.sess.run(self.bnn.nn, feed_dict={self.bnn.x: c})
+        z_context = self.get_representation(c)
         self.latent_h.add(z_context, action, reward)
 
         # Retrain the network on the original data (data_h)
         if self.t % self.update_freq_nn == 0:
-
-            if self.reset_lr:
-                self.bnn.assign_lr()
-            self.bnn.train(self.data_h, self.num_epochs)
-
-            # Update the latent representation of every datapoint collected so far
-            new_z = self.bnn.sess.run(self.bnn.nn,
-                                    feed_dict={self.bnn.x: self.data_h.contexts})
-            self.latent_h.replace_data(contexts=new_z)
-
-        # Update the Bayesian Linear Regression
+            self._retrain_nn()
+            
         if self.t % self.update_freq_lr == 0:
+            self._update_actions()
+            
+    def _retrain_nn(self):
+        """Retrain the network on original data (data_h)"""
+        if self.reset_lr:
+            self.bnn.assign_lr()
 
-            # Find all the actions to update
-            actions_to_update = self.latent_h.actions[:-self.update_freq_lr]
+        self.bnn.train(self.data_h, self.num_epochs)
+        self._replace_latent_h()
+        
+    def _replace_latent_h(self):
+        # Update the latent representation of every datapoint collected so far
+        new_z = self.get_representation(self.data_h.contexts)
+        
+        self.latent_h.replace_data(contexts=new_z)
+        
+    def _update_actions(self):
+        """
+        Update the Bayesian Linear Regression on 
+        stored latent variables.
+        """
+
+        # Find all the actions to update
+        actions_to_update = self.latent_h.actions[:-self.update_freq_lr]
 
         for action_v in np.unique(actions_to_update):
 
@@ -238,7 +272,37 @@ class NeuralLinearPosteriorSampling(BanditAlgorithm):
             self.precision[action_v] = precision_a
             self.a[action_v] = a_post
             self.b[action_v] = b_post
-            
+       
+    def fit(self, contexts, actions, rewards, num_updates=10):
+        """Inputs bulk data for training.
+        Args:
+          contexts: Set of observed contexts.
+          actions: Corresponding list of actions.
+          rewards: Corresponding list of rewards.
+        """
+        data_length = len(rewards)
+        self.data_h._ingest_data(contexts, actions, rewards)
+        #create latent representations of data
+        self._replace_latent_h()
+        self.latent_h.actions = self.data_h.actions
+        self.latent_h.rewards = self.data_h.rewards
+        #update count
+        self.t += data_length
+        #update posterior on ingested data
+        for n in range(num_updates):
+            #alternately update network and output layer
+            self._retrain_nn()
+            self._update_actions()
+    
+        
+    def predict(self, contexts, thompson=True):
+        """Takes a list or array-like of contexts and batch predicts on them"""
+        if thompson:
+            reward_matrix = self._sample(contexts)
+        else:
+            reward_matrix = self.expected_values(contexts)
+        return np.argmax(reward_matrix, axis=0)
+    
     def save(self, path):
         """saves model to path"""
         os.mkdir('tmp')
