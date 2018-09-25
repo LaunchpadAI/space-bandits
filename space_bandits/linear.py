@@ -11,6 +11,29 @@ from .bandit_algorithm import BanditAlgorithm
 from .contextual_dataset import ContextualDataset
 
 import pickle
+import multiprocessing
+
+#These functions help with multiprocessing random number generation.
+mus = None
+covs = None
+
+def get_mn(i):
+    """helper function to parallelize random number generation"""
+    return np.random.multivariate_normal(mus[i], covs[i])
+
+def parallelize_multivar(mus, covs, n_threads=-1):
+    """parallelizes mn computation"""
+    if n_threads == -1:
+        try:
+            cpus = multiprocessing.cpu_count()
+        except NotImplementedError:
+            cpus = 2   # arbitrary default
+    else:
+        cpus = n_threads
+
+    pool = multiprocessing.Pool(processes=cpus)
+    samples = pool.map(get_mn, range(len(mus)))
+    return samples
 
 
 class LinearFullPosteriorSampling(BanditAlgorithm):
@@ -73,13 +96,14 @@ class LinearFullPosteriorSampling(BanditAlgorithm):
         ]
         return np.array(vals)
         
-    def _sample(self, context):
+    def _sample(self, context, parallelize=False, n_threads=-1):
         """
         Samples beta's from posterior, and samples from expected values.
         Args:
           context: Context for which the action need to be chosen.
         Returns:
           action: sampled reward vector."""
+        
         # Sample sigma2, and beta conditional on sigma2
         context = context.reshape(-1, self.hparams.context_dim)
         n_rows = len(context)
@@ -90,13 +114,18 @@ class LinearFullPosteriorSampling(BanditAlgorithm):
         beta_s = []
         try:
             for i in range(self.hparams.num_actions):
+                global mus
+                global covs
                 mus = np.repeat(self.mu[i][np.newaxis, :], n_rows, axis=0)
                 s2s = sigma2_s[:, i]
                 rep = np.repeat(s2s[:, np.newaxis], self.hparams.context_dim+1, axis=1)
                 rep = np.repeat(rep[:, :, np.newaxis], self.hparams.context_dim+1, axis=2)
                 covs = np.repeat(self.cov[i][np.newaxis, :, :], n_rows, axis=0)
                 covs = rep * covs
-                multivariates = [np.random.multivariate_normal(mus[j], covs[j]) for j in range(n_rows)]
+                if parallelize:
+                    multivariates = parallelize_multivar(mus, covs, n_threads=n_threads)
+                else:
+                    multivariates = [np.random.multivariate_normal(mus[j], covs[j]) for j in range(n_rows)]
                 beta_s.append(multivariates)
         except np.linalg.LinAlgError as e:
             # Sampling could fail if covariance is not positive definite
@@ -184,10 +213,10 @@ class LinearFullPosteriorSampling(BanditAlgorithm):
             for action in range(self.data_h.num_actions):
                 self._update_action(action)
                 
-    def predict(self, contexts, thompson=True):
+    def predict(self, contexts, thompson=True, parallelize=True, n_threads=-1):
         """Takes a list or array-like of contexts and batch predicts on them"""
         if thompson:
-            reward_matrix = self._sample(contexts)
+            reward_matrix = self._sample(contexts, parallelize=parallelize, n_threads=n_threads)
         else:
             reward_matrix = self.expected_values(contexts)
         return np.argmax(reward_matrix, axis=0)
