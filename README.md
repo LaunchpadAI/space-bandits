@@ -12,4 +12,5 @@ This package is currently under development. To install the latest release, use 
 pip install space_bandits
 `
 
-For a introduction to using the library, check out the [demo notebook](demo.ipynb).
+For a introduction to using the library, check out the [demo notebook](demo.ipynb).<br><br>
+A toy problem and API walkthrough is available in the [toy problem notebook](toy_problem.ipynb)
