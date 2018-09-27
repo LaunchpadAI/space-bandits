@@ -39,13 +39,194 @@ def parallelize_multivar(mus, covs, n_threads=-1):
     samples = pool.map(get_mn, range(len(mus)))
     return samples
 
+def init_neural_model(
+        num_actions,
+        context_dim,
+        name='neural_model',
+        do_scaling=False,
+        init_scale=0.3,
+        activation='relu',
+        layer_sizes=[50],
+        batch_size=512,
+        activate_decay=True,
+        initial_lr=0.1,
+        max_grad_norm=5.0,
+        show_training=False,
+        freq_summary=1000,
+        buffer_s=-1,
+        initial_pulls=100,
+        reset_lr=True,
+        lr_decay_rate=0.5,
+        training_freq=1,
+        training_freq_network=50,
+        training_epochs=100,
+        memory_size=-1,
+        a0=6,
+        b0=6,
+        lambda_prior=0.25,
+    ):
+    """
+    Initializes a neural linear contextual bandits model.
+    
+        num_actions (int): the number of actions in problem
+        
+        context_dim (int): the length of context vector
+        
+        init_scale (float): variance for neural network weights initialization (default 0.3)
+        
+        activation (tensorflow activation function): activation function for neural network layers (default tf.nn.relu)
+        
+        layer_sizes (list of integers): defines neural network architecture: n_layers = len(layer_sizes), value is per-layer width. (default [50])
+        
+        batch_size (integer): batch size for neural network training (default 512)
+        
+        activate_decay (bool): whether to use learning rate decay (default True),
+        
+        initial_lr (float): initial learning rate for neural network training (default 0.1)
+        
+        max_grad_norm (float): maximum gradient value for gradient clipping (default 5.0)
+        
+        show_training (bool): whether to show details of neural network training
+        
+        freq_summary (int): summary output frequency in number of steps (default 1000)
+        
+        buffer_s (int): buffer size for retained examples (default -1)
+        
+        initial_pulls (int): number of random pulls before greedy behavior (default 100),
+        
+        reset_lr (bool) = whether to reset learning rate on each nn training (default True),
+        
+        lr_decay_rate (float): learning rate decay for nn updates (default 0.5)
+        
+        training_freq (int): frequency for updates to bayesian linear regressor (default 1)
+        
+        training_freq_network (int): frequency of neural network re-trainings (default 50)
+        
+        training_epochs (int): number of epochs in each neural network re-training (default 100)
+        
+        a0 (int): initial alpha value (default 6)
+        
+        b0 (int): initial beta_0 value (default 6)
+        
+        lambda_prior (float): lambda prior parameter(default 0.25)
+    """
+    
+    from .neural_linear import NeuralLinearPosteriorSampling
+    model = NeuralLinearPosteriorSampling(name, arguments, do_scaling=do_scaling)
+    
+    return model
 
-class NeuralLinearPosteriorSampling(BanditAlgorithm):
+
+class NeuralBandits(BanditAlgorithm):
     """Full Bayesian linear regression on the last layer of a deep neural net."""
 
-    def __init__(self, name, arguments, do_scaling=False, optimizer='RMS'):
-        self.arguments = arguments
-        self.arguments['optimizer'] = optimizer
+    def __init__(
+            self,
+            num_actions,
+            num_features,
+            name='neural_model',
+            do_scaling=True,
+            init_scale=0.3,
+            activation='relu',
+            verbose=True,
+            optimizer='RMS',
+            layer_sizes=[50],
+            batch_size=512,
+            activate_decay=True,
+            initial_lr=0.1,
+            max_grad_norm=5.0,
+            show_training=False,
+            freq_summary=1000,
+            buffer_s=-1,
+            initial_pulls=100,
+            reset_lr=True,
+            lr_decay_rate=0.5,
+            training_freq=1,
+            training_freq_network=50,
+            training_epochs=100,
+            memory_size=-1,
+            a0=6,
+            b0=6,
+            lambda_prior=0.25,
+        ):
+        """
+        A "NeuralLinear" Deep Bayesian contextual bandits model.
+
+            num_actions (int): the number of actions in problem
+
+            num_features (int): the length of context vector, a.k.a. the number of features
+            
+            name (string): name for this model instance (default 'neural_model')
+            
+            do_scaling (bool): whether to automatically scale features (default True)
+
+            init_scale (float): variance for neural network weights initialization (default 0.3)
+
+            activation (tensorflow activation function): activation function for neural network layers (default tf.nn.relu)
+            
+            verbose (bool): whether to print reports on training steps (default True)
+
+            layer_sizes (list of integers): defines neural network architecture: n_layers = len(layer_sizes), value is per-layer width. (default [50])
+
+            batch_size (integer): batch size for neural network training (default 512)
+
+            activate_decay (bool): whether to use learning rate decay (default True),
+
+            initial_lr (float): initial learning rate for neural network training (default 0.1)
+
+            max_grad_norm (float): maximum gradient value for gradient clipping (default 5.0)
+
+            show_training (bool): whether to show details of neural network training
+
+            freq_summary (int): summary output frequency in number of steps (default 1000)
+
+            buffer_s (int): buffer size for retained examples (default -1)
+
+            initial_pulls (int): number of random pulls before greedy behavior (default 100),
+
+            reset_lr (bool) = whether to reset learning rate on each nn training (default True),
+
+            lr_decay_rate (float): learning rate decay for nn updates (default 0.5)
+
+            training_freq (int): frequency for updates to bayesian linear regressor (default 1)
+
+            training_freq_network (int): frequency of neural network re-trainings (default 50)
+
+            training_epochs (int): number of epochs in each neural network re-training (default 100)
+
+            a0 (int): initial alpha value (default 6)
+
+            b0 (int): initial beta_0 value (default 6)
+
+            lambda_prior (float): lambda prior parameter(default 0.25)
+        """
+        self.arguments = {
+            'num_actions':num_actions,
+            'context_dim':num_features,
+            'name':name,
+            'init_scale':init_scale,
+            'activation':activation,
+            'verbose':verbose,
+            'optimizer':optimizer,
+            'layer_sizes':layer_sizes,
+            'batch_size':batch_size,
+            'activate_decay':activate_decay,
+            'initial_lr':initial_lr,
+            'max_grad_norm':max_grad_norm,
+            'show_training':show_training,
+            'freq_summary':freq_summary,
+            'buffer_s':buffer_s,
+            'initial_pulls':initial_pulls,
+            'reset_lr':reset_lr,
+            'lr_decay_rate':lr_decay_rate,
+            'training_freq':training_freq,
+            'training_freq_network':training_freq_network,
+            'training_epochs':training_epochs,
+            'memory_size':memory_size,
+            'a0':a0,
+            'b0':b0,
+            'lambda_prior':lambda_prior
+        }
         self.do_scaling = do_scaling
         self.hparams = self.get_hparams()
         self.name = name
@@ -90,7 +271,7 @@ class NeuralLinearPosteriorSampling(BanditAlgorithm):
 
         self.num_epochs = self.hparams.training_epochs
         
-        memory_size = arguments['memory_size']
+        memory_size = self.arguments['memory_size']
         self.data_h = ContextualDataset(
                             self.hparams.context_dim,
                             self.hparams.num_actions,
@@ -119,6 +300,7 @@ class NeuralLinearPosteriorSampling(BanditAlgorithm):
             context_dim=arguments['context_dim'],
             init_scale=arguments['init_scale'],
             activation=activation_function,
+            verbose=arguments['verbose'],
             layer_sizes=arguments['layer_sizes'],
             batch_size=arguments['batch_size'],
             activate_decay=arguments['activate_decay'],
@@ -157,9 +339,10 @@ class NeuralLinearPosteriorSampling(BanditAlgorithm):
         """scales input contexts based on stored data."""
         means = self.data_h.contexts.mean(axis=0)
         stds = self.data_h.contexts.std(axis=0)
-        context -= means
-        context /= stds
-        return context
+        result = context.copy()
+        result -= means
+        result /= stds
+        return result
     
     def expected_values(self, context):
         """

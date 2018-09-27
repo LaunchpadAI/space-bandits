@@ -9,6 +9,7 @@ from scipy.stats import invgamma
 
 from .bandit_algorithm import BanditAlgorithm
 from .contextual_dataset import ContextualDataset
+import tensorflow as tf
 
 import pickle
 import multiprocessing
@@ -36,19 +37,46 @@ def parallelize_multivar(mus, covs, n_threads=-1):
     return samples
 
 
-class LinearFullPosteriorSampling(BanditAlgorithm):
+class LinearBandits(BanditAlgorithm):
     """Thompson Sampling with independent linear models and unknown noise var."""
 
-    def __init__(self, name, hparams):
-        """Initialize posterior distributions and hyperparameters.
+    def __init__(
+        self,
+        num_actions,
+        num_features,
+        name='linear_model',
+        a0=6,
+        b0=6,
+        lambda_prior=0.25,
+        initial_pulls=2
+        ):
+        """
+        A bayesian-linear contextual bandits model.
         Assume a linear model for each action i: reward = context^T beta_i + noise
         Each beta_i has a Gaussian prior (lambda parameter), each sigma2_i (noise
         level) has an inverse Gamma prior (a0, b0 parameters). Mean, covariance,
         and precision matrices are initialized, and the ContextualDataset created.
-        Args:
-          name: Name of the algorithm.
-          hparams: Hyper-parameters of the algorithm.
+    
+        num_actions (int): the number of available actions in problem
+        
+        num_features (int): the length of context vector, a.k.a. the number of features
+        
+        a0 (int): initial alpha value (default 6)
+        
+        b0 (int): initial beta_0 value (default 6)
+        
+        lambda_prior (float): lambda prior parameter(default 0.25)
+        
+        initial_pulls (int): number of pure exploration rounds before Thompson sampling
         """
+        hparams = tf.contrib.training.HParams(
+                    num_actions=num_actions,
+                    context_dim=num_features,
+                    a0=a0,
+                    b0=b0,
+                    lambda_prior=lambda_prior,
+                    initial_pulls=initial_pulls
+            )
 
         self.name = name
         self.hparams = hparams
@@ -77,8 +105,8 @@ class LinearFullPosteriorSampling(BanditAlgorithm):
         self.b = [self._b0 for _ in range(self.hparams.num_actions)]
 
         self.t = 0
-        self.data_h = ContextualDataset(hparams.context_dim,
-                                        hparams.num_actions,
+        self.data_h = ContextualDataset(self.hparams.context_dim,
+                                        self.hparams.num_actions,
                                         intercept=True)
         
     def expected_values(self, context):
