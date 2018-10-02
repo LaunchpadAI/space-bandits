@@ -11,7 +11,8 @@ setup(
       'tensorflow>=1.5.0',
       'numpy>=1.14.3',
       'scipy>=0.19.1',
-      'pandas>=0.21.0'
+      'pandas>=0.21.0',
+      'cython'
     ],
     packages=['space_bandits']
 )
