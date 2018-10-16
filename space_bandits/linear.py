@@ -5,6 +5,10 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+np.seterr(all='warn')
+
+import warnings
+
 from scipy.stats import invgamma
 
 from .bandit_algorithm import BanditAlgorithm
@@ -24,7 +28,7 @@ def get_mn(i):
     cov = covs[i]
     min_eig = np.min(np.real(np.linalg.eigvals(cov)))
     if min_eig < 0:
-        cov -= 10*min_eig * np.eye(*y_cov.shape)
+        cov -= 10*min_eig * np.eye(*cov.shape)
     return np.random.multivariate_normal(mu, cov)
 
 def parallelize_multivar(mus, covs, n_threads=-1):
