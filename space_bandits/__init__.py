@@ -16,7 +16,7 @@ import os
 import pickle
 import shutil
 
-__version__ = '0.0.92'
+__version__ = '0.0.93'
 
 def load_linear_model(path):
     """loads linear model from path argument"""
