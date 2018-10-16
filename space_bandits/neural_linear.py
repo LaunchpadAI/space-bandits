@@ -23,7 +23,12 @@ covs = None
 
 def get_mn(i):
     """helper function to parallelize random number generation"""
-    return np.random.multivariate_normal(mus[i], covs[i])
+    mu = mus[i]
+    cov = covs[i]
+    min_eig = np.min(np.real(np.linalg.eigvals(cov)))
+    if min_eig < 0:
+        cov -= 10*min_eig * np.eye(*y_cov.shape)
+    return np.random.multivariate_normal(mu, cov)
 
 def parallelize_multivar(mus, covs, n_threads=-1):
     """parallelizes mn computation"""
@@ -337,11 +342,12 @@ class NeuralBandits(BanditAlgorithm):
     
     def _scale_data(self, context):
         """scales input contexts based on stored data."""
-        means = self.data_h.contexts.mean(axis=0)
-        stds = self.data_h.contexts.std(axis=0)
-        result = context.copy()
-        result -= means
-        result /= stds
+        with np.errstate(divide='ignore',invalid='ignore'):
+            means = self.data_h.contexts.mean(axis=0)
+            stds = self.data_h.contexts.std(axis=0)
+            result = context.copy()
+            result -= means
+            result /= stds
         return result
     
     def expected_values(self, context):
@@ -484,7 +490,7 @@ class NeuralBandits(BanditAlgorithm):
             self.a[action_v] = a_post
             self.b[action_v] = b_post
        
-    def fit(self, contexts, actions, rewards, num_updates=10):
+    def fit(self, contexts, actions, rewards, num_updates=1):
         """Inputs bulk data for training.
         Args:
           contexts: Set of observed contexts.
