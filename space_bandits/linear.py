@@ -32,8 +32,8 @@ def parallelize_multivar(mus, covs, n_threads=-1):
     else:
         cpus = n_threads
 
-    pool = multiprocessing.Pool(processes=cpus)
-    samples = pool.map(get_mn, range(len(mus)))
+    with multiprocessing.Pool(processes=cpus) as pool:
+        samples = pool.map(get_mn, range(len(mus)))
     return samples
 
 
