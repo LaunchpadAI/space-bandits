@@ -26,7 +26,7 @@ def parallelize_multivar(mus, covs, n_threads=-1):
     """parallelizes mn computation"""
     if n_threads == -1:
         try:
-            cpus = multiprocessing.cpu_count()
+            cpus = multiprocessing.cpu_count()-1
         except NotImplementedError:
             cpus = 2   # arbitrary default
     else:
