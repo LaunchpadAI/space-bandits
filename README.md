@@ -1,12 +1,12 @@
 # SpaceBandits: Contextual Bandits from the Future
 
-It's 2018 and neural networks are everywhere. Isn't it time for a package that makes Deep Bayesian Contextual Bandits models simple to deploy?<br><br>
+Approximate Bayesian inference with neural networks has demonstrated robust performance in numerous empirical studies of contextual bandits problems. Isn't it time for a package that makes deep Bayesian contextual bandits models simple to use?<br><br>
 
-SpaceBandits takes the advanced models developed and experimented on in the 2018 Google Brain research paper [Deep Bayesian Bandits Showdown: An Empirical Comparison of Bayesian Deep Networks for Thompson Sampling](https://arxiv.org/pdf/1802.09127.pdf) and makes them easy to build, train, manage, and deploy.
+SpaceBandits takes the models developed and experimented on in the 2018 Google Brain research paper [Deep Bayesian Bandits Showdown: An Empirical Comparison of Bayesian Deep Networks for Thompson Sampling](https://arxiv.org/pdf/1802.09127.pdf) and makes them easy to build, train, manage, and deploy.
 
 ## Usage
 
-The alpha release of SpaceBandits, v0.0.9, is the current version. To install the latest release, use pip: 
+The alpha release of SpaceBandits, v0.0.93, is the current version. To install the latest release, use pip: 
 
 `
 pip install space_bandits
