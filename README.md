@@ -1,4 +1,4 @@
-# SpaceBandits: Contextual Bandits from the Future
+# SpaceBandits: Deep Contextual Bandits Models made Simple
 
 Approximate Bayesian inference with neural networks has demonstrated robust performance in numerous empirical studies of contextual bandits problems. Isn't it time for a package that makes deep Bayesian contextual bandits models simple to use?<br><br>
 
