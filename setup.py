@@ -15,10 +15,11 @@ setup(
     url='https://github.com/fellowship/space-bandits/archive/v0.0.94.tar.gz',
     install_requires=[
       'tensorflow>=1.5.0',
-      'numpy>=1.14.3',
+      'numpy==1.14.5',
       'scipy>=0.19.1',
       'pandas>=0.21.0',
-      'cython'
+      'cython',
+      'scikit-learn'
     ],
-    packages=['space-bandits']
+    packages=['space_bandits']
 )

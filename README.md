@@ -9,7 +9,7 @@ SpaceBandits takes the models developed and experimented on in the 2018 Google B
 The alpha release of SpaceBandits, v0.0.93, is the current version. To install the latest release, use pip: 
 
 `
-pip install space_bandits
+pip install space-bandits
 `
 
 For a introduction to using the library and the online-learning API, check out the [demo notebook](demo.ipynb).<br><br>
