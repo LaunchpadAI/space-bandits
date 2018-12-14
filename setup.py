@@ -1,7 +1,7 @@
 from distutils.core import setup
 
 long_desc = """
-A practical library for building contextual bandits modelswith deep Bayesian approximation.
+A practical library for building contextual bandits models with deep Bayesian approximation.
 Supports both online learning and offline training of models as well as novel methods for cross-validating CB models on historic data.
 """
 
