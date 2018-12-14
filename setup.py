@@ -12,7 +12,8 @@ setup(
     long_description=long_desc,
     author='Michael Klear',
     author_email='michael@fellowship.ai',
-    url='https://github.com/fellowship/space-bandits/archive/v0.0.94.tar.gz',
+    url='https://github.com/fellowship/space-bandits',
+    download_url='https://github.com/fellowship/space-bandits/archive/v0.0.94.tar.gz',
     install_requires=[
       'tensorflow>=1.5.0',
       'numpy==1.14.5',
