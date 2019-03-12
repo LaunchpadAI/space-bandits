@@ -1,4 +1,5 @@
 """Define a data buffer for contextual bandit algorithms."""
+#testing change.
 
 from __future__ import absolute_import
 from __future__ import division
@@ -63,7 +64,7 @@ class ContextualDataset(object):
             self.rewards = np.vstack((self.rewards, r))
 
         self.actions.append(action)
-        
+
         #Drop oldest example if memory constraint
         if self.memory_size != -1:
             if self.contexts.shape[0] > self.memory_size:
@@ -148,7 +149,7 @@ class ContextualDataset(object):
 
     def get_batch_with_weights(self, batch_size):
         """Returns a random mini-batch with one-hot weights for actions."""
-        
+
         n, _ = self.contexts.shape
         if self.buffer_s == -1:
             # use all the data
