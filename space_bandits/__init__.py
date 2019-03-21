@@ -22,7 +22,7 @@ def load_linear_model(path):
     """loads linear model from path argument"""
     with open(path, 'rb') as f:
         model = pickle.load(f)
-    return model    
+    return model
 
 def load_neural_model(path):
     """loads linear model from path argument"""

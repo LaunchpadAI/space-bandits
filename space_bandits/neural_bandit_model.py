@@ -21,22 +21,23 @@ class NeuralBanditModel(BayesianNN):
         self.opt_name = optimizer
         self.name = name
         self.hparams = hparams
-        self.verbose = getattr(self.hparams, "verbose", True)
+        self.verbose = self.hparams["verbose"]
         self.times_trained = 0
+        self.lr = self.hparams["initial_lr"]
         self.build_model()
 
     def build_layer(self, x, num_units):
         """Builds a layer with input x; dropout and layer norm if specified."""
 
-        init_s = self.hparams.init_scale
+        init_s = self.hparams['init_scale']
 
-        layer_n = getattr(self.hparams, "layer_norm", False)
-        dropout = getattr(self.hparams, "use_dropout", False)
+        layer_n = self.hparams.get("layer_norm", False)
+        dropout = self.hparams.get("use_dropout", False)
 
         nn = tf.contrib.layers.fully_connected(
             x,
             num_units,
-            activation_fn=self.hparams.activation,
+            activation_fn=tf.nn.relu,
             normalizer_fn=None if not layer_n else tf.contrib.layers.layer_norm,
             normalizer_params={},
             weights_initializer=tf.random_uniform_initializer(-init_s, init_s)
@@ -50,18 +51,18 @@ class NeuralBanditModel(BayesianNN):
     def forward_pass(self):
         """forward pass of the neural network"""
 
-        init_s = self.hparams.init_scale
+        init_s = self.hparams['init_scale']
 
         scope_name = "prediction_{}".format(self.name)
         with tf.variable_scope(scope_name, reuse=tf.AUTO_REUSE):
             nn = self.x
-            for num_units in self.hparams.layer_sizes:
+            for num_units in self.hparams['layer_sizes']:
                 if num_units > 0:
                     nn = self.build_layer(nn, num_units)
 
             y_pred = tf.layers.dense(
               nn,
-              self.hparams.num_actions,
+              self.hparams['num_actions'],
               kernel_initializer=tf.random_uniform_initializer(-init_s, init_s))
 
         return nn, y_pred
@@ -86,19 +87,19 @@ class NeuralBanditModel(BayesianNN):
 
                 # context
                 self.x = tf.placeholder(
-                    shape=[None, self.hparams.context_dim],
+                    shape=[None, self.hparams['context_dim']],
                     dtype=tf.float32,
                     name="{}_x".format(self.name))
 
                 # reward vector
                 self.y = tf.placeholder(
-                    shape=[None, self.hparams.num_actions],
+                    shape=[None, self.hparams['num_actions']],
                     dtype=tf.float32,
                     name="{}_y".format(self.name))
 
                 # weights (1 for selected action, 0 otherwise)
                 self.weights = tf.placeholder(
-                    shape=[None, self.hparams.num_actions],
+                    shape=[None, self.hparams['num_actions']],
                     dtype=tf.float32,
                     name="{}_w".format(self.name))
 
@@ -106,14 +107,14 @@ class NeuralBanditModel(BayesianNN):
                 self.nn, self.y_pred = self.forward_pass()
                 self.loss = tf.squared_difference(self.y_pred, self.y)
                 self.weighted_loss = tf.multiply(self.weights, self.loss)
-                self.cost = tf.reduce_sum(self.weighted_loss) / self.hparams.batch_size
+                self.cost = tf.reduce_sum(self.weighted_loss) / self.hparams['batch_size']
 
-                if self.hparams.activate_decay:
+                if self.hparams['activate_decay']:
                     self.lr = tf.train.inverse_time_decay(
-                        self.hparams.initial_lr, self.global_step,
-                        1, self.hparams.lr_decay_rate)
+                        self.hparams['initial_lr'], self.global_step,
+                        1, self.hparams['lr_decay_rate'])
                 else:
-                    self.lr = tf.Variable(self.hparams.initial_lr, trainable=False)
+                    self.lr = tf.Variable(self.hparams['initial_lr'], trainable=False)
 
                 # create tensorboard metrics
                 self.create_summaries()
@@ -122,7 +123,7 @@ class NeuralBanditModel(BayesianNN):
 
                 tvars = tf.trainable_variables()
                 grads, _ = tf.clip_by_global_norm(
-                    tf.gradients(self.cost, tvars), self.hparams.max_grad_norm)
+                    tf.gradients(self.cost, tvars), self.hparams['max_grad_norm'])
 
                 self.optimizer = self.select_optimizer()
 
@@ -149,13 +150,13 @@ class NeuralBanditModel(BayesianNN):
         """
 
         decay_steps = 1
-        if self.hparams.activate_decay:
+        if self.hparams['activate_decay']:
             current_gs = self.sess.run(self.global_step)
             with self.graph.as_default():
-                self.lr = tf.train.inverse_time_decay(self.hparams.initial_lr,
+                self.lr = tf.train.inverse_time_decay(self.hparams['initial_lr'],
                                                       self.global_step - current_gs,
                                                       decay_steps,
-                                                      self.hparams.lr_decay_rate)
+                                                      self.hparams['lr_decay_rate'])
 
     def select_optimizer(self):
         """Selects optimizer. To be extended (SGLD, KFAC, etc)."""
@@ -184,13 +185,13 @@ class NeuralBanditModel(BayesianNN):
         with self.graph.as_default():
 
             for step in range(num_steps):
-                x, y, w = data.get_batch_with_weights(self.hparams.batch_size)
+                x, y, w = data.get_batch_with_weights(self.hparams['batch_size'])
                 _, cost, summary, lr = self.sess.run(
                     [self.train_op, self.cost, self.summary_op, self.lr],
                     feed_dict={self.x: x, self.y: y, self.weights: w})
 
-                if step % self.hparams.freq_summary == 0:
-                    if self.hparams.show_training:
+                if step % self.hparams['freq_summary'] == 0:
+                    if self.hparams['show_training']:
                         print("{} | step: {}, lr: {}, loss: {}".format(
                             self.name, step, lr, cost))
                     self.summary_writer.add_summary(summary, step)
