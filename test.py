@@ -13,6 +13,7 @@ from space_bandits.toy_problem import generate_dataframe
 from space_bandits.linear import LinearBandits
 from space_bandits.neural_linear import NeuralBandits
 from space_bandits.neural_bandit_model import NeuralBanditModel
+from space_bandits.bayesian_nn import BayesianNN
 
 def create_neural_bandit_model():
     hparams = create_hparams()
@@ -194,8 +195,11 @@ class AppTest(unittest.TestCase):
         t = time.time() - self.startTime
         print("%s: %.3f seconds" % (self.id(), t))
 
-    def test_neural_bandit_model(self):
-        model = create_neural_bandit_model()
+    def test_bayesian_nn(self):
+        nn = BayesianNN()
+
+#    def test_neural_bandit_model(self):
+#        model = create_neural_bandit_model()
 
     def test_linear_model(self):
         model = create_linear_model()

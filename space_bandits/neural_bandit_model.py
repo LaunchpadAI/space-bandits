@@ -7,6 +7,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import torch
+from torch import nn
 import tensorflow as tf
 
 from .bayesian_nn import BayesianNN
@@ -24,6 +26,7 @@ class NeuralBanditModel(BayesianNN):
         self.verbose = self.hparams["verbose"]
         self.times_trained = 0
         self.lr = self.hparams["initial_lr"]
+        self.layers = []
         self.build_model()
 
     def build_layer(self, x, num_units):
@@ -43,96 +46,23 @@ class NeuralBanditModel(BayesianNN):
             weights_initializer=tf.random_uniform_initializer(-init_s, init_s)
         )
 
-        if dropout:
-            nn = tf.nn.dropout(nn, self.hparams.keep_prob)
-
         return nn
 
-    def forward_pass(self):
+    def forward(self, x):
         """forward pass of the neural network"""
-
-        init_s = self.hparams['init_scale']
-
-        scope_name = "prediction_{}".format(self.name)
-        with tf.variable_scope(scope_name, reuse=tf.AUTO_REUSE):
-            nn = self.x
-            for num_units in self.hparams['layer_sizes']:
-                if num_units > 0:
-                    nn = self.build_layer(nn, num_units)
-
-            y_pred = tf.layers.dense(
-              nn,
-              self.hparams['num_actions'],
-              kernel_initializer=tf.random_uniform_initializer(-init_s, init_s))
-
-        return nn, y_pred
+        for layer in self.layers:
+            x = layer(x)
+        return x
 
     def build_model(self):
-        """Defines the actual NN model with fully connected layers.
-        The loss is computed for partial feedback settings (bandits), so only
-        the observed outcome is backpropagated (see weighted loss).
-        Selects the optimizer and, finally, it also initializes the graph.
         """
-
-        # create and store the graph corresponding to the BNN instance
-        self.graph = tf.Graph()
-
-        with self.graph.as_default():
-            # create and store a new session for the graph
-            self.sess = tf.Session()
-
-            with tf.name_scope(self.name):
-
-                self.global_step = tf.train.get_or_create_global_step()
-
-                # context
-                self.x = tf.placeholder(
-                    shape=[None, self.hparams['context_dim']],
-                    dtype=tf.float32,
-                    name="{}_x".format(self.name))
-
-                # reward vector
-                self.y = tf.placeholder(
-                    shape=[None, self.hparams['num_actions']],
-                    dtype=tf.float32,
-                    name="{}_y".format(self.name))
-
-                # weights (1 for selected action, 0 otherwise)
-                self.weights = tf.placeholder(
-                    shape=[None, self.hparams['num_actions']],
-                    dtype=tf.float32,
-                    name="{}_w".format(self.name))
-
-                # with tf.variable_scope("prediction_{}".format(self.name)):
-                self.nn, self.y_pred = self.forward_pass()
-                self.loss = tf.squared_difference(self.y_pred, self.y)
-                self.weighted_loss = tf.multiply(self.weights, self.loss)
-                self.cost = tf.reduce_sum(self.weighted_loss) / self.hparams['batch_size']
-
-                if self.hparams['activate_decay']:
-                    self.lr = tf.train.inverse_time_decay(
-                        self.hparams['initial_lr'], self.global_step,
-                        1, self.hparams['lr_decay_rate'])
-                else:
-                    self.lr = tf.Variable(self.hparams['initial_lr'], trainable=False)
-
-                # create tensorboard metrics
-                self.create_summaries()
-                self.summary_writer = tf.summary.FileWriter(
-                    "{}/graph_{}".format(self.logdir, self.name), self.sess.graph)
-
-                tvars = tf.trainable_variables()
-                grads, _ = tf.clip_by_global_norm(
-                    tf.gradients(self.cost, tvars), self.hparams['max_grad_norm'])
-
-                self.optimizer = self.select_optimizer()
-
-                self.train_op = self.optimizer.apply_gradients(
-                    zip(grads, tvars), global_step=self.global_step)
-
-                self.init = tf.global_variables_initializer()
-
-                self.initialize_graph()
+        Defines the actual NN model with fully connected layers.
+        """
+        for layer in self.hparams['layer_sizes']:
+            new_layer = self.build_layer(layer)
+            self.layers.append(new_layer)
+        output_layer = nn.linear()
+        self.layers.append()
 
     def initialize_graph(self):
         """Initializes all variables."""
