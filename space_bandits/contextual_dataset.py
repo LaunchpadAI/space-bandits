@@ -32,10 +32,12 @@ class ContextualDataset(object):
         self._context_dim = context_dim
         self._num_actions = num_actions
         self.contexts = None
+        self.scaled_contexts = None
         self.rewards = None
         self.actions = []
         self.memory_size = memory_size
         self.intercept = intercept
+        self.scaling_data = []
 
     def add(self, context, action, reward):
         """Adds a new triplet (context, action, reward) to the dataset.
@@ -47,9 +49,12 @@ class ContextualDataset(object):
         """
         if not isinstance(context, torch.Tensor):
             context = torch.tensor(context)
+        if len(context.shape) > 1:
+            context = context.reshape(-1)
         if self.intercept:
             c = context[:]
-            c = torch.cat((c, torch.tensor([1.0]).double())).reshape((1, self.context_dim + 1))
+            c = torch.cat((c, torch.tensor([1.0]).double()))
+            c = c.reshape((1, self.context_dim + 1))
         else:
             c = torch.tensor(context[:]).reshape((1, self.context_dim))
 
@@ -59,7 +64,7 @@ class ContextualDataset(object):
             self.contexts = torch.cat((self.contexts, c))
 
         r = torch.zeros((1, self.num_actions))
-        r[0, action] = reward
+        r[0, action] = float(reward)
         if self.rewards is None:
             self.rewards = r
         else:
@@ -131,11 +136,11 @@ class ContextualDataset(object):
 
         self.actions = self.actions + list(actions)
 
-    def get_batch(self, batch_size):
+    def get_batch(self, batch_size=512):
         """Returns a random minibatch of (contexts, rewards) with batch_size."""
         n, _ = self.contexts.shape
         ind = np.random.choice(range(n), batch_size)
-        return self.contexts[ind, :], self.rewards[ind, :]
+        return self.contexts[ind, :], self.rewards[ind, :], torch.tensor(self.actions)[ind]
 
     def get_data(self, action):
         """Returns all (context, reward) where the action was played."""
@@ -150,7 +155,7 @@ class ContextualDataset(object):
         weights[a_ind[:, 0], a_ind[:, 1]] = 1.0
         return self.contexts, self.rewards, weights
 
-    def get_batch_with_weights(self, batch_size):
+    def get_batch_with_weights(self, batch_size, scaled=False):
         """Returns a random mini-batch with one-hot weights for actions."""
 
         n, _ = self.contexts.shape
@@ -165,13 +170,37 @@ class ContextualDataset(object):
         sampled_actions = torch.tensor(self.actions)[ind]
         a_ind = torch.tensor([(i, val) for i, val in enumerate(sampled_actions)])
         weights[a_ind[:, 0], a_ind[:, 1]] = 1.0
-        return self.contexts[ind, :], self.rewards[ind, :], weights
+        if scaled:
+            ctx = self.scaled_contexts[ind, :]
+        else:
+            ctx = self.contexts[ind, :]
+        return ctx, self.rewards[ind, :], weights
 
     def num_points(self, f=None):
         """Returns number of points in the buffer (after applying function f)."""
         if f is not None:
             return f(self.contexts.shape[0])
         return self.contexts.shape[0]
+
+    def scale_contexts(self, contexts=None):
+        """
+        Performs mean/std scaling operation on contexts.
+        if contexts is provided as argument, returns scaled version
+            (scaled by statistics of data in dataset.)
+        """
+        means = self.contexts.mean(dim=0)
+        stds = self.contexts.std(dim=0)
+        stds[stds==0] = 1
+        self.scaled_contexts = self.contexts
+        for col in range(self._context_dim):
+            self.scaled_contexts[:, col] -= means[col]
+            self.scaled_contexts[:, col] /= stds[col]
+        if contexts is not None:
+            result = contexts
+            for col in range(self._context_dim):
+                result[:, col] -= means[col]
+                result[:, col] /= stds[col]
+            return result
 
     def __len__(self):
         return len(self.actions)
