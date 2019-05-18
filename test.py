@@ -11,7 +11,7 @@ from space_bandits.contextual_dataset import ContextualDataset
 from space_bandits.toy_problem import get_customer, get_rewards, get_cust_reward
 from space_bandits.toy_problem import generate_dataframe
 from space_bandits.linear import LinearBandits
-from space_bandits.neural_linear import NeuralBandits
+from space_bandits.neural_linear import NeuralBandits, load_model
 from space_bandits.neural_bandit_model import NeuralBanditModel, build_action_mask
 from space_bandits.neural_bandit_model import build_target
 
@@ -230,6 +230,27 @@ class AppTest(unittest.TestCase):
         ohe = build_target(rewards, actions, num_actions=5)
         assert ohe.shape == (512, 5)
 
+    def test_neural_linear_model(self):
+        model = NeuralBandits(
+            num_actions=3,
+            num_features=2,
+            training_freq_network=200
+        )
+        fts, reward = get_cust_reward()
+        for i in range(300):
+            action = model.action(fts)
+            r = reward[action]
+            model.update(fts, action, r)
+        df = generate_dataframe(500)
+        X = df[['age', 'ARPU']].values
+        A = df['action'].values
+        R = df['reward'].values
+        model.fit(X, A, R)
+        model.save('test_file')
+        model = load_model('test_file')
+        X = df[['age', 'ARPU']].sample(2).values
+        model.predict(X, parallelize=True)
+        os.remove('test_file')
 
     def test_bayesian_nn(self):
         nn = BayesianNN()
@@ -239,6 +260,10 @@ class AppTest(unittest.TestCase):
         assert len(model.layers) == 2
         dataset = create_toy_contexual_dataset()
         model.train(dataset, 10)
+        ctx = dataset.get_contexts(scaled=True).float()
+        z = model.get_representation(ctx)
+        assert z.shape == (2000, 50)
+        assert z.min() == 0.0
 
     def test_linear_model(self):
         model = create_linear_model()
