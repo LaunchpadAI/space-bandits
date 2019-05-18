@@ -47,6 +47,12 @@ class NeuralBanditModel(nn.Module):
         self.verbose = self.hparams["verbose"]
         self.times_trained = 0
         self.lr = self.hparams["initial_lr"]
+        if self.hparams['activation'] == 'relu':
+            self.activation = F.relu
+        else:
+            act = self.hparams['activation']
+            msg = f'activation {act} not implimented'
+            raise Exception(msg)
         self.layers = []
         self.build_model()
         self.optim = self.select_optimizer()
@@ -73,8 +79,7 @@ class NeuralBanditModel(nn.Module):
         for i, layer in enumerate(self.layers):
             x = layer(x)
             if i != len(self.layers)-1:
-                if self.hparams['activation'] == 'relu':
-                    x = F.relu(x)
+                x = self.activation(x)
         return x
 
     def build_model(self):
@@ -92,13 +97,14 @@ class NeuralBanditModel(nn.Module):
         output_layer = nn.modules.linear.Linear(out_dim, self.hparams['num_actions'])
         self.layers.append(output_layer)
 
-    def assign_lr(self, lr):
+    def assign_lr(self, lr=None):
         """
         Resets the learning rate to input argument value "lr".
         """
+        if lr is None:
+            lr = self.lr
         for param_group in self.optim.param_groups:
             param_group['lr'] = lr
-
 
     def select_optimizer(self):
         """Selects optimizer. To be extended (SGLD, KFAC, etc)."""
@@ -128,15 +134,20 @@ class NeuralBanditModel(nn.Module):
 
             r_hat = self.forward(ctx.float())
             r_hat *= act
-            ls = loss(r_hat, r)
+            ls = loss(r_hat, r.float())
             ls.backward()
 
             self.optim.step()
             self.optim.zero_grad()
 
-    def get_representation(self, data):
+    def get_representation(self, contexts):
         """
         Given input contexts, returns representation
         "z" vector.
         """
-        pass
+        x = contexts
+        with torch.no_grad():
+            for layer in self.layers[:-1]:
+                x = layer(x)
+                x = self.activation(x)
+        return x

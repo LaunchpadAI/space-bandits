@@ -56,7 +56,10 @@ class ContextualDataset(object):
             c = torch.cat((c, torch.tensor([1.0]).double()))
             c = c.reshape((1, self.context_dim + 1))
         else:
-            c = torch.tensor(context[:]).reshape((1, self.context_dim))
+            if type(context) == type(torch.tensor(0)):
+                c = context[:].reshape((1, self.context_dim))
+            else:
+                c = torch.tensor(context[:]).reshape((1, self.context_dim))
 
         if self.contexts is None:
             self.contexts = c
@@ -201,6 +204,12 @@ class ContextualDataset(object):
                 result[:, col] -= means[col]
                 result[:, col] /= stds[col]
             return result
+
+    def get_contexts(self, scaled=False):
+        if scaled:
+            return self.scaled_contexts
+        else:
+            return self.contexts
 
     def __len__(self):
         return len(self.actions)
