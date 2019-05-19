@@ -329,6 +329,9 @@ class NeuralBandits(BanditAlgorithm):
         if self.reset_lr:
             self.bnn.assign_lr()
 
+        #uncomment following lines for better stuff.
+        #steps = round(self.num_epochs * (len(self.data_h)/self.hparams['batch_size']))
+        #print(f"training for {steps} steps.")
         self.bnn.train(self.data_h, self.num_epochs)
         self._replace_latent_h()
 
@@ -348,7 +351,7 @@ class NeuralBandits(BanditAlgorithm):
         """
 
         # Find all the actions to update
-        actions_to_update = self.latent_h.actions[:-self.update_freq_lr]
+        actions_to_update = self.latent_h.actions
 
         for action_v in np.unique(actions_to_update):
 
@@ -378,7 +381,7 @@ class NeuralBandits(BanditAlgorithm):
             self.a[action_v] = a_post
             self.b[action_v] = b_post
 
-    def fit(self, contexts, actions, rewards, num_updates=1):
+    def fit(self, contexts, actions, rewards):
         """Inputs bulk data for training.
         Args:
           contexts: Set of observed contexts.
@@ -394,10 +397,8 @@ class NeuralBandits(BanditAlgorithm):
         #update count
         self.t += data_length
         #update posterior on ingested data
-        for n in range(num_updates):
-            #alternately update network and output layer
-            self._retrain_nn()
-            self._update_actions()
+        self._retrain_nn()
+        self._update_actions()
 
 
     def predict(self, contexts, thompson=True, parallelize=True, n_threads=-1):

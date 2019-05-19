@@ -234,7 +234,8 @@ class AppTest(unittest.TestCase):
         model = NeuralBandits(
             num_actions=3,
             num_features=2,
-            training_freq_network=200
+            training_freq_network=200,
+            layer_sizes=[50, 2]
         )
         fts, reward = get_cust_reward()
         for i in range(300):
@@ -249,7 +250,7 @@ class AppTest(unittest.TestCase):
         model.save('test_file')
         model = load_model('test_file')
         X = df[['age', 'ARPU']].sample(2).values
-        model.predict(X, parallelize=True)
+        model.predict(X, parallelize=False)
         os.remove('test_file')
 
     def test_bayesian_nn(self):
