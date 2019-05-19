@@ -111,6 +111,11 @@ class NeuralBanditModel(nn.Module):
         lr = self.hparams['initial_lr']
         return torch.optim.RMSprop(self.parameters(), lr=lr)
 
+    def scale_weights(self):
+        init_s = self.hparams.get('init_scale', 0.3)
+        for layer in self.layers:
+            nn.init.uniform_(layer.weight, a=-init_s, b=init_s)
+
     def train(self, data, num_steps):
         """Trains the network for num_steps, using the provided data.
         Args:
@@ -130,12 +135,16 @@ class NeuralBanditModel(nn.Module):
         for step in range(num_steps):
             lr = base_lr * (1 / (1 + (decay_rate * step)))
             self.assign_lr(lr)
+
             ctx, r, act = data.get_batch_with_weights(batch_size, scaled=True)
 
             r_hat = self.forward(ctx.float())
             r_hat *= act
             ls = loss(r_hat, r.float())
+            print(ls.item())
             ls.backward()
+            clip = self.hparams['max_grad_norm']
+            torch.nn.utils.clip_grad_norm_(self.parameters(), clip)
 
             self.optim.step()
             self.optim.zero_grad()
@@ -147,7 +156,7 @@ class NeuralBanditModel(nn.Module):
         """
         x = contexts
         with torch.no_grad():
-            for layer in self.layers[:-1]:
+            for i, layer in enumerate(self.layers[:-1]):
                 x = layer(x)
                 x = self.activation(x)
         return x

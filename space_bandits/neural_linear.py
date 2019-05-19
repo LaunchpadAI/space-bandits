@@ -256,6 +256,8 @@ class NeuralBandits(BanditAlgorithm):
     def _sample(self, context, parallelize=False, n_threads=-1):
         # Sample sigma2, and beta conditional on sigma2
         context = context.reshape(-1, self.hparams['context_dim'])
+        if self.do_scaling:
+            context = self.data_h.scale_contexts(contexts=context)
         n_rows = len(context)
         d = self.mu[0].shape[0]
         a_projected = np.repeat(np.array(self.a)[np.newaxis, :], n_rows, axis=0)
@@ -332,7 +334,10 @@ class NeuralBandits(BanditAlgorithm):
 
     def _replace_latent_h(self):
         # Update the latent representation of every datapoint collected so far
-        new_z = self.get_representation(self.data_h.contexts)
+        if self.do_scaling:
+            self.data_h.scale_contexts()
+        ctx = self.data_h.get_contexts(scaled=self.do_scaling)
+        new_z = self.get_representation(ctx)
 
         self.latent_h._replace_data(contexts=new_z)
 

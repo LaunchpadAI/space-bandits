@@ -199,6 +199,8 @@ class ContextualDataset(object):
             self.scaled_contexts[:, col] -= means[col]
             self.scaled_contexts[:, col] /= stds[col]
         if contexts is not None:
+            if not isinstance(contexts, torch.Tensor):
+                contexts = torch.tensor(contexts)
             result = contexts
             for col in range(self._context_dim):
                 result[:, col] -= means[col]
