@@ -235,7 +235,7 @@ class NeuralBandits(BanditAlgorithm):
         z = self.bnn.get_representation(c)
         return z
 
-    def expected_values(self, context):
+    def expected_values(self, context, scale=False):
         """
         Computes expected values from context. Does not consider uncertainty.
         Args:
@@ -243,6 +243,9 @@ class NeuralBandits(BanditAlgorithm):
         Returns:
           expected reward vector.
         """
+        if scale:
+            context = self.data_h.scale_contexts(contexts=context)
+
         # Compute last-layer representation for the current context
         z_context = self.get_representation(context).numpy()
 
@@ -255,9 +258,6 @@ class NeuralBandits(BanditAlgorithm):
 
     def _sample(self, context, parallelize=False, n_threads=-1):
         # Sample sigma2, and beta conditional on sigma2
-        context = context.reshape(-1, self.hparams['context_dim'])
-        if self.do_scaling:
-            context = self.data_h.scale_contexts(contexts=context)
         n_rows = len(context)
         d = self.mu[0].shape[0]
         a_projected = np.repeat(np.array(self.a)[np.newaxis, :], n_rows, axis=0)
@@ -302,11 +302,13 @@ class NeuralBandits(BanditAlgorithm):
 
     def action(self, context):
         """Samples beta's from posterior, and chooses best action accordingly."""
-
         # Round robin until each action has been selected "initial_pulls" times
         if self.t < self.num_actions * self.initial_pulls:
             return self.t % self.num_actions
         else:
+            context = context.reshape(-1, self.hparams['context_dim'])
+            if self.do_scaling:
+                context = self.data_h.scale_contexts(contexts=context)
             vals = self._sample(context)
         return np.argmax(vals)
 
@@ -403,6 +405,10 @@ class NeuralBandits(BanditAlgorithm):
 
     def predict(self, contexts, thompson=True, parallelize=True, n_threads=-1):
         """Takes a list or array-like of contexts and batch predicts on them"""
+        contexts = contexts.reshape(-1, self.hparams['context_dim'])
+        if self.do_scaling:
+            contexts = self.data_h.scale_contexts(contexts=contexts)
+
         if thompson:
             reward_matrix = self._sample(contexts, parallelize=parallelize, n_threads=n_threads)
         else:

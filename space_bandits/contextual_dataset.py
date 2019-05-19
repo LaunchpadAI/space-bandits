@@ -194,7 +194,7 @@ class ContextualDataset(object):
         means = self.contexts.mean(dim=0)
         stds = self.contexts.std(dim=0)
         stds[stds==0] = 1
-        self.scaled_contexts = self.contexts
+        self.scaled_contexts = self.contexts.clone()
         for col in range(self._context_dim):
             self.scaled_contexts[:, col] -= means[col]
             self.scaled_contexts[:, col] /= stds[col]

@@ -56,6 +56,7 @@ class NeuralBanditModel(nn.Module):
         self.layers = []
         self.build_model()
         self.optim = self.select_optimizer()
+        self.loss = nn.modules.loss.MSELoss()
 
     def build_layer(self, inp_dim, out_dim):
         """Builds a layer with input x; dropout and layer norm if specified."""
@@ -116,6 +117,24 @@ class NeuralBanditModel(nn.Module):
         for layer in self.layers:
             nn.init.uniform_(layer.weight, a=-init_s, b=init_s)
 
+    def do_step(self, x, y, w, step):
+
+        decay_rate = self.hparams.get('lr_decay_rate', 0.5)
+        base_lr = self.hparams.get('initial_lr', 0.1)
+
+        lr = base_lr * (1 / (1 + (decay_rate * step)))
+        self.assign_lr(lr)
+
+        y_hat = self.forward(x.float())
+        y_hat *= w
+        ls = self.loss(y_hat, y.float())
+        ls.backward()
+        clip = self.hparams['max_grad_norm']
+        torch.nn.utils.clip_grad_norm_(self.parameters(), clip)
+
+        self.optim.step()
+        self.optim.zero_grad()
+
     def train(self, data, num_steps):
         """Trains the network for num_steps, using the provided data.
         Args:
@@ -126,28 +145,12 @@ class NeuralBanditModel(nn.Module):
         if self.verbose:
             print("Training {} for {} steps...".format(self.name, num_steps))
 
-        decay_rate = self.hparams.get('lr_decay_rate', 0.5)
-        base_lr = self.hparams.get('initial_lr', 0.1)
         batch_size = self.hparams.get('batch_size', 512)
 
-        loss = nn.modules.loss.MSELoss()
         data.scale_contexts()
         for step in range(num_steps):
-            lr = base_lr * (1 / (1 + (decay_rate * step)))
-            self.assign_lr(lr)
-
-            ctx, r, act = data.get_batch_with_weights(batch_size, scaled=True)
-
-            r_hat = self.forward(ctx.float())
-            r_hat *= act
-            ls = loss(r_hat, r.float())
-            print(ls.item())
-            ls.backward()
-            clip = self.hparams['max_grad_norm']
-            torch.nn.utils.clip_grad_norm_(self.parameters(), clip)
-
-            self.optim.step()
-            self.optim.zero_grad()
+            x, y, w = data.get_batch_with_weights(batch_size, scaled=True)
+            self.do_step(x, y, w, step)
 
     def get_representation(self, contexts):
         """
