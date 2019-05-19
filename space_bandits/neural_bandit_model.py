@@ -7,169 +7,133 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import torch
+from torch import nn
+import torch.nn.functional as F
 
 from .bayesian_nn import BayesianNN
 
+def build_action_mask(actions, num_actions):
+    """
+    Takes a torch tensor with integer values.
+    Returns a one-hot encoded version, where
+        each column corresponds to a single action.
+    """
+    ohe = torch.zeros((len(actions), num_actions))
+    actions = actions.reshape(-1, 1)
+    return ohe.scatter_(1, actions, 1)
 
-class NeuralBanditModel(BayesianNN):
+def build_target(rewards, actions, num_actions):
+    """
+    Takes a torch tensor with floating point values.
+    Returns a one-hot encoded version, where
+        each column corresponds to a single action.
+        The value is the observed reward.
+    """
+    ohe = torch.zeros((len(actions), num_actions))
+    actions = actions.reshape(-1, 1)
+    return ohe.scatter_(1, actions, rewards)
+
+
+class NeuralBanditModel(nn.Module):
     """Implements a neural network for bandit problems."""
 
-    def __init__(self, optimizer, hparams, name, logdir='.'):
-        """Saves hyper-params and builds the Tensorflow graph."""
-        self.logdir = logdir
+    def __init__(self, optimizer, hparams, name):
+        """Saves hyper-params and builds a torch NN."""
+        super(NeuralBanditModel, self).__init__()
         self.opt_name = optimizer
         self.name = name
         self.hparams = hparams
-        self.verbose = getattr(self.hparams, "verbose", True)
+        self.verbose = self.hparams["verbose"]
         self.times_trained = 0
+        self.lr = self.hparams["initial_lr"]
+        if self.hparams['activation'] == 'relu':
+            self.activation = F.relu
+        else:
+            act = self.hparams['activation']
+            msg = f'activation {act} not implimented'
+            raise Exception(msg)
+        self.layers = []
         self.build_model()
+        self.optim = self.select_optimizer()
+        self.loss = nn.modules.loss.MSELoss()
 
-    def build_layer(self, x, num_units):
+    def build_layer(self, inp_dim, out_dim):
         """Builds a layer with input x; dropout and layer norm if specified."""
 
-        init_s = self.hparams.init_scale
+        init_s = self.hparams.get('init_scale', 0.3)
+        #these features not currently implemented
+        layer_n = self.hparams.get("layer_norm", False)
+        dropout = self.hparams.get("use_dropout", False)
 
-        layer_n = getattr(self.hparams, "layer_norm", False)
-        dropout = getattr(self.hparams, "use_dropout", False)
-
-        nn = tf.contrib.layers.fully_connected(
-            x,
-            num_units,
-            activation_fn=self.hparams.activation,
-            normalizer_fn=None if not layer_n else tf.contrib.layers.layer_norm,
-            normalizer_params={},
-            weights_initializer=tf.random_uniform_initializer(-init_s, init_s)
+        layer = nn.modules.linear.Linear(
+            inp_dim,
+            out_dim
         )
+        nn.init.uniform_(layer.weight, a=-init_s, b=init_s)
+        name = f'layer {len(self.layers)}'
+        self.add_module(name, layer)
+        return layer
 
-        if dropout:
-            nn = tf.nn.dropout(nn, self.hparams.keep_prob)
-
-        return nn
-
-    def forward_pass(self):
+    def forward(self, x):
         """forward pass of the neural network"""
-
-        init_s = self.hparams.init_scale
-
-        scope_name = "prediction_{}".format(self.name)
-        with tf.variable_scope(scope_name, reuse=tf.AUTO_REUSE):
-            nn = self.x
-            for num_units in self.hparams.layer_sizes:
-                if num_units > 0:
-                    nn = self.build_layer(nn, num_units)
-
-            y_pred = tf.layers.dense(
-              nn,
-              self.hparams.num_actions,
-              kernel_initializer=tf.random_uniform_initializer(-init_s, init_s))
-
-        return nn, y_pred
+        for i, layer in enumerate(self.layers):
+            x = layer(x)
+            if i != len(self.layers)-1:
+                x = self.activation(x)
+        return x
 
     def build_model(self):
-        """Defines the actual NN model with fully connected layers.
-        The loss is computed for partial feedback settings (bandits), so only
-        the observed outcome is backpropagated (see weighted loss).
-        Selects the optimizer and, finally, it also initializes the graph.
         """
-
-        # create and store the graph corresponding to the BNN instance
-        self.graph = tf.Graph()
-
-        with self.graph.as_default():
-            # create and store a new session for the graph
-            self.sess = tf.Session()
-
-            with tf.name_scope(self.name):
-
-                self.global_step = tf.train.get_or_create_global_step()
-
-                # context
-                self.x = tf.placeholder(
-                    shape=[None, self.hparams.context_dim],
-                    dtype=tf.float32,
-                    name="{}_x".format(self.name))
-
-                # reward vector
-                self.y = tf.placeholder(
-                    shape=[None, self.hparams.num_actions],
-                    dtype=tf.float32,
-                    name="{}_y".format(self.name))
-
-                # weights (1 for selected action, 0 otherwise)
-                self.weights = tf.placeholder(
-                    shape=[None, self.hparams.num_actions],
-                    dtype=tf.float32,
-                    name="{}_w".format(self.name))
-
-                # with tf.variable_scope("prediction_{}".format(self.name)):
-                self.nn, self.y_pred = self.forward_pass()
-                self.loss = tf.squared_difference(self.y_pred, self.y)
-                self.weighted_loss = tf.multiply(self.weights, self.loss)
-                self.cost = tf.reduce_sum(self.weighted_loss) / self.hparams.batch_size
-
-                if self.hparams.activate_decay:
-                    self.lr = tf.train.inverse_time_decay(
-                        self.hparams.initial_lr, self.global_step,
-                        1, self.hparams.lr_decay_rate)
-                else:
-                    self.lr = tf.Variable(self.hparams.initial_lr, trainable=False)
-
-                # create tensorboard metrics
-                self.create_summaries()
-                self.summary_writer = tf.summary.FileWriter(
-                    "{}/graph_{}".format(self.logdir, self.name), self.sess.graph)
-
-                tvars = tf.trainable_variables()
-                grads, _ = tf.clip_by_global_norm(
-                    tf.gradients(self.cost, tvars), self.hparams.max_grad_norm)
-
-                self.optimizer = self.select_optimizer()
-
-                self.train_op = self.optimizer.apply_gradients(
-                    zip(grads, tvars), global_step=self.global_step)
-
-                self.init = tf.global_variables_initializer()
-
-                self.initialize_graph()
-
-    def initialize_graph(self):
-        """Initializes all variables."""
-
-        with self.graph.as_default():
-            if self.verbose:
-                print("Initializing model {}.".format(self.name))
-            self.sess.run(self.init)
-
-    def assign_lr(self):
-        """Resets the learning rate in dynamic schedules for subsequent trainings.
-        In bandits settings, we do expand our dataset over time. Then, we need to
-        re-train the network with the new data. The algorithms that do not keep
-        the step constant, can reset it at the start of each *training* process.
+        Defines the actual NN model with fully connected layers.
         """
+        for i, layer in enumerate(self.hparams['layer_sizes']):
+            if i==0:
+                inp_dim = self.hparams['context_dim']
+            else:
+                inp_dim = self.hparams['layer_sizes'][i-1]
+            out_dim = self.hparams['layer_sizes'][i]
+            new_layer = self.build_layer(inp_dim, out_dim)
+            self.layers.append(new_layer)
+        output_layer = nn.modules.linear.Linear(out_dim, self.hparams['num_actions'])
+        self.layers.append(output_layer)
 
-        decay_steps = 1
-        if self.hparams.activate_decay:
-            current_gs = self.sess.run(self.global_step)
-            with self.graph.as_default():
-                self.lr = tf.train.inverse_time_decay(self.hparams.initial_lr,
-                                                      self.global_step - current_gs,
-                                                      decay_steps,
-                                                      self.hparams.lr_decay_rate)
+    def assign_lr(self, lr=None):
+        """
+        Resets the learning rate to input argument value "lr".
+        """
+        if lr is None:
+            lr = self.lr
+        for param_group in self.optim.param_groups:
+            param_group['lr'] = lr
 
     def select_optimizer(self):
         """Selects optimizer. To be extended (SGLD, KFAC, etc)."""
-        return tf.train.RMSPropOptimizer(self.lr)
+        lr = self.hparams['initial_lr']
+        return torch.optim.RMSprop(self.parameters(), lr=lr)
 
-    def create_summaries(self):
-        """Defines summaries including mean loss, learning rate, and global step."""
+    def scale_weights(self):
+        init_s = self.hparams.get('init_scale', 0.3)
+        for layer in self.layers:
+            nn.init.uniform_(layer.weight, a=-init_s, b=init_s)
 
-        with self.graph.as_default():
-            with tf.name_scope(self.name + "_summaries"):
-                tf.summary.scalar("cost", self.cost)
-                tf.summary.scalar("lr", self.lr)
-                tf.summary.scalar("global_step", self.global_step)
-                self.summary_op = tf.summary.merge_all()
+    def do_step(self, x, y, w, step):
+
+        decay_rate = self.hparams.get('lr_decay_rate', 0.5)
+        base_lr = self.hparams.get('initial_lr', 0.1)
+
+        lr = base_lr * (1 / (1 + (decay_rate * step)))
+        self.assign_lr(lr)
+
+        y_hat = self.forward(x.float())
+        y_hat *= w
+        ls = self.loss(y_hat, y.float())
+        ls.backward()
+        clip = self.hparams['max_grad_norm']
+        torch.nn.utils.clip_grad_norm_(self.parameters(), clip)
+
+        self.optim.step()
+        self.optim.zero_grad()
 
     def train(self, data, num_steps):
         """Trains the network for num_steps, using the provided data.
@@ -181,18 +145,21 @@ class NeuralBanditModel(BayesianNN):
         if self.verbose:
             print("Training {} for {} steps...".format(self.name, num_steps))
 
-        with self.graph.as_default():
+        batch_size = self.hparams.get('batch_size', 512)
 
-            for step in range(num_steps):
-                x, y, w = data.get_batch_with_weights(self.hparams.batch_size)
-                _, cost, summary, lr = self.sess.run(
-                    [self.train_op, self.cost, self.summary_op, self.lr],
-                    feed_dict={self.x: x, self.y: y, self.weights: w})
+        data.scale_contexts()
+        for step in range(num_steps):
+            x, y, w = data.get_batch_with_weights(batch_size, scaled=True)
+            self.do_step(x, y, w, step)
 
-                if step % self.hparams.freq_summary == 0:
-                    if self.hparams.show_training:
-                        print("{} | step: {}, lr: {}, loss: {}".format(
-                            self.name, step, lr, cost))
-                    self.summary_writer.add_summary(summary, step)
-
-            self.times_trained += 1
+    def get_representation(self, contexts):
+        """
+        Given input contexts, returns representation
+        "z" vector.
+        """
+        x = contexts
+        with torch.no_grad():
+            for i, layer in enumerate(self.layers[:-1]):
+                x = layer(x)
+                x = self.activation(x)
+        return x

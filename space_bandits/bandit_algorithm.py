@@ -16,7 +16,7 @@ def from_pandas(inp):
 
 class BanditAlgorithm(object):
     """A bandit algorithm must be able to do two basic operations.
-    
+
     1. Choose an action given a context.
     2. Update its internal model given a triple (context, played action, reward).
     """
@@ -26,7 +26,7 @@ class BanditAlgorithm(object):
 
     def update(self, context, action, reward):
         pass
-    
+
     def predict_proba(self, context):
         """
 
@@ -40,7 +40,7 @@ class BanditAlgorithm(object):
         """
         #deal with pandas objects
         context = from_pandas(context)
-        
+
         expected_values = self.expected_values(context)
         reward_history = self.data_h.rewards
         action_history = np.array(self.data_h.actions)
@@ -58,14 +58,14 @@ class BanditAlgorithm(object):
 
         probas = sigmoid(expected_values)
         return probas
-    
+
     def get_sscore(self, context, action, reward):
         """
 
         Computes the contextual bandits score S
         on some provided validation data
         (context, action, reward triplet).
-        
+
         Returns a singular score value S.
         0 < S < 1 indicates some convergence (higher is better)
         S < 0 indicates you're better off with a multi-arm bandit model.
@@ -75,11 +75,11 @@ class BanditAlgorithm(object):
         context = from_pandas(context)
         action = from_pandas(action)
         reward = from_pandas(reward)
-        
+
         #recall training data
         past_actions = np.array(self.data_h.actions)
-        past_rewards = self.data_h.rewards
-        
+        past_rewards = np.array(self.data_h.rewards)
+
         #compute naive expected rewards
         E_b = []
         for a in range(self.hparams.num_actions):
@@ -88,7 +88,7 @@ class BanditAlgorithm(object):
             E = slc.mean()
             E_b.append(E)
         Err_b = []
-        
+
         #compute benchmark error
         for a in range(self.hparams.num_actions):
             args = np.argwhere(action==a)[:, 0]
@@ -114,5 +114,5 @@ class BanditAlgorithm(object):
         bal = np.array(bal) / sum(bal)
         rat_vec = 1 - Err_m/Err_b
         avg = np.average(rat_vec, weights=bal)
-        
+
         return avg

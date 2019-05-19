@@ -5,18 +5,20 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-np.seterr(all='warn')
 
-import warnings
+np.seterr(all='warn')
 
 from scipy.stats import invgamma
 
 from .bandit_algorithm import BanditAlgorithm
 from .contextual_dataset import ContextualDataset
-import tensorflow as tf
+import torch
 
 import pickle
 import multiprocessing
+
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 #These functions help with multiprocessing random number generation.
 mus = None
@@ -65,59 +67,59 @@ class LinearBandits(BanditAlgorithm):
         Each beta_i has a Gaussian prior (lambda parameter), each sigma2_i (noise
         level) has an inverse Gamma prior (a0, b0 parameters). Mean, covariance,
         and precision matrices are initialized, and the ContextualDataset created.
-    
+
         num_actions (int): the number of available actions in problem
-        
+
         num_features (int): the length of context vector, a.k.a. the number of features
-        
+
         a0 (int): initial alpha value (default 6)
-        
+
         b0 (int): initial beta_0 value (default 6)
-        
+
         lambda_prior (float): lambda prior parameter(default 0.25)
-        
+
         initial_pulls (int): number of pure exploration rounds before Thompson sampling
         """
-        hparams = tf.contrib.training.HParams(
-                    num_actions=num_actions,
-                    context_dim=num_features,
-                    a0=a0,
-                    b0=b0,
-                    lambda_prior=lambda_prior,
-                    initial_pulls=initial_pulls
-            )
+        hparams = {
+                    'num_actions':num_actions,
+                    'context_dim':num_features,
+                    'a0':a0,
+                    'b0':b0,
+                    'lambda_prior':lambda_prior,
+                    'initial_pulls':initial_pulls
+        }
 
         self.name = name
         self.hparams = hparams
 
         # Gaussian prior for each beta_i
-        self._lambda_prior = self.hparams.lambda_prior
+        self._lambda_prior = self.hparams['lambda_prior']
 
         self.mu = [
-            np.zeros(self.hparams.context_dim + 1)
-            for _ in range(self.hparams.num_actions)
+            np.zeros(self.hparams['context_dim'] + 1)
+            for _ in range(self.hparams['num_actions'])
         ]
 
-        self.cov = [(1.0 / self.lambda_prior) * np.eye(self.hparams.context_dim + 1)
-                    for _ in range(self.hparams.num_actions)]
+        self.cov = [(1.0 / self.lambda_prior) * np.eye(self.hparams['context_dim'] + 1)
+                    for _ in range(self.hparams['num_actions'])]
 
         self.precision = [
-            self.lambda_prior * np.eye(self.hparams.context_dim + 1)
-            for _ in range(self.hparams.num_actions)
+            self.lambda_prior * np.eye(self.hparams['context_dim'] + 1)
+            for _ in range(self.hparams['num_actions'])
         ]
 
         # Inverse Gamma prior for each sigma2_i
-        self._a0 = self.hparams.a0
-        self._b0 = self.hparams.b0
+        self._a0 = self.hparams['a0']
+        self._b0 = self.hparams['b0']
 
-        self.a = [self._a0 for _ in range(self.hparams.num_actions)]
-        self.b = [self._b0 for _ in range(self.hparams.num_actions)]
+        self.a = [self._a0 for _ in range(self.hparams['num_actions'])]
+        self.b = [self._b0 for _ in range(self.hparams['num_actions'])]
 
         self.t = 0
-        self.data_h = ContextualDataset(self.hparams.context_dim,
-                                        self.hparams.num_actions,
+        self.data_h = ContextualDataset(self.hparams['context_dim'],
+                                        self.hparams['num_actions'],
                                         intercept=True)
-        
+
     def expected_values(self, context):
         """
         Computes expected values from context. Does not consider uncertainty.
@@ -129,10 +131,10 @@ class LinearBandits(BanditAlgorithm):
         # Compute sampled expected values, intercept is last component of beta
         vals = [
             np.dot(self.mu[i][:-1], context.T) + self.mu[i][-1]
-            for i in range(self.hparams.num_actions)
+            for i in range(self.hparams['num_actions'])
         ]
         return np.array(vals)
-        
+
     def _sample(self, context, parallelize=False, n_threads=-1):
         """
         Samples beta's from posterior, and samples from expected values.
@@ -140,9 +142,9 @@ class LinearBandits(BanditAlgorithm):
           context: Context for which the action need to be chosen.
         Returns:
           action: sampled reward vector."""
-        
+
         # Sample sigma2, and beta conditional on sigma2
-        context = context.reshape(-1, self.hparams.context_dim)
+        context = context.reshape(-1, self.hparams['context_dim'])
         n_rows = len(context)
         a_projected = np.repeat(np.array(self.a)[np.newaxis, :], n_rows, axis=0)
         sigma2_s = self.b * invgamma.rvs(a_projected)
@@ -150,13 +152,13 @@ class LinearBandits(BanditAlgorithm):
             sigma2_s = sigma2_s.reshape(1, -1)
         beta_s = []
         try:
-            for i in range(self.hparams.num_actions):
+            for i in range(self.hparams['num_actions']):
                 global mus
                 global covs
                 mus = np.repeat(self.mu[i][np.newaxis, :], n_rows, axis=0)
                 s2s = sigma2_s[:, i]
-                rep = np.repeat(s2s[:, np.newaxis], self.hparams.context_dim+1, axis=1)
-                rep = np.repeat(rep[:, :, np.newaxis], self.hparams.context_dim+1, axis=2)
+                rep = np.repeat(s2s[:, np.newaxis], self.hparams['context_dim']+1, axis=1)
+                rep = np.repeat(rep[:, :, np.newaxis], self.hparams['context_dim']+1, axis=2)
                 covs = np.repeat(self.cov[i][np.newaxis, :, :], n_rows, axis=0)
                 covs = rep * covs
                 if parallelize:
@@ -169,8 +171,8 @@ class LinearBandits(BanditAlgorithm):
             # Todo: Fix This
             print('Exception when sampling from {}.'.format(self.name))
             print('Details: {} | {}.'.format(e.message, e.args))
-            d = self.hparams.context_dim + 1
-            for i in range(self.hparams.num_actions):
+            d = self.hparams['context_dim'] + 1
+            for i in range(self.hparams['num_actions']):
                 multivariates = [np.random.multivariate_normal(np.zeros((d)), np.eye(d)) for j in range(n_rows)]
                 beta_s.append(multivariates)
         beta_s = np.array(beta_s)
@@ -179,7 +181,7 @@ class LinearBandits(BanditAlgorithm):
         # Compute sampled expected values, intercept is last component of beta
         vals = [
             (beta_s[i, :, :-1] * context).sum(axis=-1) + beta_s[i, :, -1]
-            for i in range(self.hparams.num_actions)
+            for i in range(self.hparams['num_actions'])
         ]
         return np.array(vals)
 
@@ -192,8 +194,8 @@ class LinearBandits(BanditAlgorithm):
         """
 
         # Round robin until each action has been selected "initial_pulls" times
-        if self.t < self.hparams.num_actions * self.hparams.initial_pulls:
-            return self.t % self.hparams.num_actions
+        if self.t < self.hparams['num_actions'] * self.hparams['initial_pulls']:
+            return self.t % self.hparams['num_actions']
         else:
             vals = self._sample(context)
             return np.argmax(vals)
@@ -207,19 +209,21 @@ class LinearBandits(BanditAlgorithm):
         """
         self.t += 1
         self.data_h.add(context, action, reward)
-        
+
         self._update_action(action)
 
     def _update_action(self, action):
         """Updates posterior for given action"""
         # Update posterior of action with formulas: \beta | x,y ~ N(mu_q, cov_q)
         x, y = self.data_h.get_data(action)
+        x = np.array(x)
+        y = np.array(y)
 
         # The algorithm could be improved with sequential update formulas (cheaper)
         s = np.dot(x.T, x)
 
         # Some terms are removed as we assume prior mu_0 = 0.
-        precision_a = s + self.lambda_prior * np.eye(self.hparams.context_dim + 1)
+        precision_a = s + self.lambda_prior * np.eye(self.hparams['context_dim'] + 1)
         cov_a = np.linalg.inv(precision_a)
         mu_a = np.dot(cov_a, np.dot(x.T, y))
 
@@ -234,8 +238,8 @@ class LinearBandits(BanditAlgorithm):
         self.precision[action] = precision_a
         self.a[action] = a_post
         self.b[action] = b_post
-        
-    def fit(self, contexts, actions, rewards, num_updates=100):
+
+    def fit(self, contexts, actions, rewards, num_updates=1):
         """Inputs bulk data for training.
         Args:
           contexts: Set of observed contexts.
@@ -249,23 +253,19 @@ class LinearBandits(BanditAlgorithm):
         for n in range(num_updates):
             for action in range(self.data_h.num_actions):
                 self._update_action(action)
-                
+
     def predict(self, contexts, thompson=True, parallelize=True, n_threads=-1):
         """Takes a list or array-like of contexts and batch predicts on them"""
+        try:
+            contexts = contexts.values
+        except:
+            pass
         if thompson:
             reward_matrix = self._sample(contexts, parallelize=parallelize, n_threads=n_threads)
         else:
             reward_matrix = self.expected_values(contexts)
         return np.argmax(reward_matrix, axis=0)
 
-    def classic_predict(self, contexts, thompson=True):
-        """Takes a list or array-like of contexts and batch predicts on them"""
-        if thompson:
-            rewards = np.array([np.argmax(self._sample(c.reshape(1, -1))) for c in contexts])
-        else:
-            rewards = np.array([np.argmax(self.expected_values(c.reshape(1, -1))) for c in contexts])
-        return rewards
-            
     def save(self, path):
         """saves model to path"""
         with open(path, 'wb') as f:
