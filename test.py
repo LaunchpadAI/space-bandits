@@ -1,3 +1,4 @@
+
 import unittest
 import time
 import torch
@@ -11,8 +12,10 @@ from space_bandits.contextual_dataset import ContextualDataset
 from space_bandits.toy_problem import get_customer, get_rewards, get_cust_reward
 from space_bandits.toy_problem import generate_dataframe
 from space_bandits.linear import LinearBandits
-from space_bandits.neural_linear import NeuralBandits
-from space_bandits.neural_bandit_model import NeuralBanditModel
+from space_bandits.neural_linear import NeuralBandits, load_model
+from space_bandits.neural_bandit_model import NeuralBanditModel, build_action_mask
+from space_bandits.neural_bandit_model import build_target
+
 from space_bandits.bayesian_nn import BayesianNN
 
 def create_neural_bandit_model():
@@ -118,8 +121,25 @@ def create_contextual_dataset():
     )
     return dataset
 
+def create_toy_contexual_dataset():
+    dataset = ContextualDataset(
+        context_dim=2,
+        num_actions=3,
+        memory_size=-1,
+        intercept=False
+    )
+    for i in range(2000):
+        fts, reward = get_cust_reward()
+        action = i % 3
+        r = reward[action]
+        dataset.add(fts, action, r)
+    return dataset
+
+def check_scale_contexts(dataset):
+    dataset.scale_contexts()
+
 def check_add_data(dataset):
-    context = np.random.randn(5)
+    context = np.random.randn(1, 5)
     action = np.random.randint(0,5)
     reward = np.random.randn()
     dataset.add(context, action, reward)
@@ -141,11 +161,13 @@ def check_ingest_data(dataset):
 
 def check_get_batch(dataset):
     batch_size = 64
-    ctx, r = dataset.get_batch(batch_size)
+    ctx, r, act = dataset.get_batch(batch_size)
     assert ctx.shape == (batch_size, 6)
     assert isinstance(ctx, torch.Tensor)
     assert r.shape == (batch_size, 5)
     assert isinstance(r, torch.Tensor)
+    assert isinstance(act, torch.Tensor)
+    assert act.shape == (batch_size,)
     return ctx, r, dataset
 
 def check_get_data(dataset):
@@ -195,11 +217,54 @@ class AppTest(unittest.TestCase):
         t = time.time() - self.startTime
         print("%s: %.3f seconds" % (self.id(), t))
 
+    def test_action_mask(self):
+        dataset = self.test_contextual_dataset()
+        _, _, actions = dataset.get_batch()
+        ohe = build_action_mask(actions, num_actions=5)
+        assert ohe.shape == (512, 5)
+        for i in range(512):
+            assert ohe[i, actions[i]] == 1
+
+    def test_build_target(self):
+        dataset = self.test_contextual_dataset()
+        _, rewards, actions = dataset.get_batch()
+        ohe = build_target(rewards, actions, num_actions=5)
+        assert ohe.shape == (512, 5)
+
+    def test_neural_linear_model(self):
+        model = NeuralBandits(
+            num_actions=3,
+            num_features=2,
+            training_freq_network=200
+        )
+        fts, reward = get_cust_reward()
+        for i in range(300):
+            action = model.action(fts)
+            r = reward[action]
+            model.update(fts, action, r)
+        df = generate_dataframe(500)
+        X = df[['age', 'ARPU']].values
+        A = df['action'].values
+        R = df['reward'].values
+        model.fit(X, A, R)
+        model.save('test_file')
+        model = load_model('test_file')
+        X = df[['age', 'ARPU']].sample(2).values
+        model.predict(X, parallelize=True)
+        os.remove('test_file')
+
     def test_bayesian_nn(self):
         nn = BayesianNN()
 
-#    def test_neural_bandit_model(self):
-#        model = create_neural_bandit_model()
+    def test_neural_bandit_model(self):
+        model = create_neural_bandit_model()
+        assert len(model.layers) == 2
+        dataset = create_toy_contexual_dataset()
+        model.train(dataset, 10)
+        ctx = dataset.get_contexts(scaled=True).float()
+        z = model.get_representation(ctx)
+        assert z.shape == (2000, 50)
+        assert z.min() == 0.0
 
     def test_linear_model(self):
         model = create_linear_model()
@@ -234,6 +299,8 @@ class AppTest(unittest.TestCase):
         assert isinstance(dataset.contexts, torch.Tensor)
         assert isinstance(dataset.rewards, torch.Tensor)
         assert isinstance(dataset.actions, list)
+        check_scale_contexts(dataset)
+        return dataset
 
     def test_torch_cpu(self):
         assert check_torch_cpu()
