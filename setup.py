@@ -1,8 +1,6 @@
 from distutils.core import setup
 import os
 
-from space_bandits import __version__ as version
-
 long_desc = """
 A practical library for building contextual bandits models with deep Bayesian approximation.
 Supports both online learning and offline training of models as well as novel methods for cross-validating CB models on historic data.
@@ -16,6 +14,19 @@ def parse_requirements():
         requirements = f.read()
     return requirements.split('\n')
 
+def parse_version():
+    """gets current version of library"""
+    setup_dir = os.path.dirname(os.path.realpath(__file__))
+    version_path = os.path.join(setup_dir, 'space_bandits', '__init__.py')
+    with open(version_path, 'r') as f:
+        content = f.read()
+    lines = content.split('\n')
+    for line in lines:
+        if "__version__" in line:
+            version = line.split('=')[1]
+    return version
+
+version = parse_version()
 
 setup(
     name='space-bandits',
