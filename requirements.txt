@@ -1,7 +1,6 @@
-tensorflow>=1.5.0
-numpy==1.14.5
-scipy>=0.19.1
-pandas>=0.21.0
+torch
+numpy
+scipy
+pandas
 cython
 scikit-learn
-
