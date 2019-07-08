@@ -61,10 +61,15 @@ class ContextualDataset(object):
             else:
                 c = torch.tensor(context[:]).reshape((1, self.context_dim))
 
+
+
         if self.contexts is None:
+
             self.contexts = c
         else:
             self.contexts = torch.cat((self.contexts, c))
+
+
 
         r = torch.zeros((1, self.num_actions))
         r[0, action] = float(reward)
@@ -72,6 +77,7 @@ class ContextualDataset(object):
             self.rewards = r
         else:
             self.rewards = torch.cat((self.rewards, r))
+
 
         self.actions.append(action)
 
@@ -131,7 +137,7 @@ class ContextualDataset(object):
             self.contexts = torch.cat((self.contexts, contexts))
 
         rewards_array = coo_matrix((np.array(rewards), (np.arange(data_length), np.array(actions)))).toarray()
-        rewards_array = torch.tensor(rewards_array)
+        rewards_array = torch.tensor(rewards_array).float()
         if self.rewards is None:
             self.rewards = rewards_array
         else:

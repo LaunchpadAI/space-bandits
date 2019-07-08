@@ -312,6 +312,22 @@ class AppTest(unittest.TestCase):
         reward = 14
         model.update(context, action, reward)
 
+        df = generate_dataframe(500)
+
+        contexts = df[['age', 'ARPU']]
+        actions = df['action']
+        rewards = df['reward']
+
+        new_model = NeuralBandits(3, 2, layer_sizes=[50, 12], verbose=False)
+        #call .fit method; num_updates will repeat training n times
+        new_model.fit(contexts, actions, rewards)
+
+        new_context = np.array([26.0, 98.456463])
+        action = np.random.randint(0, 2)
+        reward = np.random.random() * 10
+        print(action)
+        new_model.update(new_context, action, reward)
+
     def test_torch_cpu(self):
         assert check_torch_cpu()
         return

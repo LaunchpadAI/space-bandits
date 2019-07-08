@@ -394,7 +394,7 @@ class NeuralBandits(BanditAlgorithm):
         self.data_h._ingest_data(contexts, actions, rewards)
         #create latent representations of data
         self._replace_latent_h()
-        self.latent_h.actions = self.data_h.actions
+        self.latent_h.actions = self.data_h.actions.copy()
         self.latent_h.rewards = self.data_h.rewards
         #update count
         self.t += data_length
