@@ -48,7 +48,7 @@ class ContextualDataset(object):
           reward: Real number representing the reward for the (context, action).
         """
         if not isinstance(context, torch.Tensor):
-            context = torch.tensor(context)
+            context = torch.tensor(context.astype(float))
         if len(context.shape) > 1:
             context = context.reshape(-1)
         if self.intercept:

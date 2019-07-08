@@ -302,6 +302,16 @@ class AppTest(unittest.TestCase):
         check_scale_contexts(dataset)
         return dataset
 
+    def test_update(self):
+        model = LinearBandits(
+            3,
+            4
+        )
+        context = np.array([76, 120, 654326, 2])
+        action = 1
+        reward = 14
+        model.update(context, action, reward)
+
     def test_torch_cpu(self):
         assert check_torch_cpu()
         return
