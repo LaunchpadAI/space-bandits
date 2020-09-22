@@ -21,7 +21,7 @@ class BanditAlgorithm(object):
     2. Update its internal model given a triple (context, played action, reward).
     """
 
-    def action(self, context, num_actions):
+    def action(self, context, num_actions=None):
         pass
 
     def update(self, context, action, reward):
