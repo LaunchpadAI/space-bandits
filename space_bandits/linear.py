@@ -201,6 +201,7 @@ class LinearBandits(BanditAlgorithm):
         else:
             vals = self._sample(context)
             if num_actions:
+                vals = np.array([v[0] for v in vals])
                 return list(np.argsort(-vals))[:num_actions]
             return np.argmax(vals)
 
