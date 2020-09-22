@@ -301,7 +301,7 @@ class NeuralBandits(BanditAlgorithm):
         return np.array(vals)
 
     def action(self, context, num_actions):
-        """Samples beta's from posterior, and chooses best action accordingly."""
+        """Samples beta's from posterior, and chooses best action(s) accordingly."""
         # Round robin until each action has been selected "initial_pulls" times
         if self.t < self.num_actions * self.initial_pulls:
             return self.t % self.num_actions
