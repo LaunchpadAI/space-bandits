@@ -185,10 +185,11 @@ class LinearBandits(BanditAlgorithm):
         ]
         return np.array(vals)
 
-    def action(self, context, num_actions):
+    def action(self, context, num_actions=None):
         """Samples beta's from posterior, and chooses best action accordingly.
         Args:
           context: Context for which the action need to be chosen.
+          num_actions: Number of actions to return.
         Returns:
           action: Selected action(s) for the context. If multiple actions are required,
           return in descending order of sampled reward value.
