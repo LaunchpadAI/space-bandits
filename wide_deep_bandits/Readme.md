@@ -4,7 +4,7 @@ A modified version of space-bandits that adds a wide component that can take ind
 
 ### Usage
 
-This version retains many of the same functions as the originalspace-bandits. For a demonstration of how the wide and deep model can be used, talk a look at the [demo.ipynb](https://github.com/fellowship/space-bandits/blob/dev/wide_deep_bandits/demo.ipynb)
+This version retains many of the same features as the original space-bandits. For a demonstration of how the wide and deep model can be used, talk a look at the [demo.ipynb](https://github.com/fellowship/space-bandits/blob/dev/wide_deep_bandits/demo.ipynb)
 
 ### Action Selection
 
