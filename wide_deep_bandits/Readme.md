@@ -10,21 +10,21 @@ This version retains many of the same functions as the originalspace-bandits. Fo
 
 This version uses Bayesian Linear Regression and Thompson Sampling similar to the original space-bandits. Action can be selected using one of the following methods.
 
--**BLR**: Use the expected rewards from the Bayesian linear regression to predict best action. 
+- **BLR**: Use the expected rewards from the Bayesian linear regression to predict best action. 
 
--**BLR+TS**: Rewards are sampled from the posterior distribution using Thompson Sampling.  
+- **BLR+TS**: Rewards are sampled from the posterior distribution using Thompson Sampling.  
 
--**Forward**: Use the predicted rewards from the neural networks to select the actions directly. 
+- **Forward**: Use the predicted rewards from the neural networks to select the actions directly. 
 
 ### Wide and Deep Model Combination Method
 
 The wide network trains an embedding using the user IDs, and the deep network consist of multiple linear layers. The wide and deep components can be combined using several different methods. 
 
--**Add Rewards**: The predicted rewards from the wide and deep network are added in the last layer and loss is computed on the sum. 
+- **Add Rewards**: The predicted rewards from the wide and deep network are added in the last layer and loss is computed on the sum. 
 
--**Concat Reward**: The predicted rewards from the wide and deep network are concatenated and loss is computed on the concatenation. 
+- **Concat Reward**: The predicted rewards from the wide and deep network are concatenated and loss is computed on the concatenation. 
 
--**Linear Combination of Rewards**: The predicted the wide and deep network are combined using a final linear layer. 
+- **Linear Combination of Rewards**: The predicted the wide and deep network are combined using a final linear layer. 
 
--**Last Layer Representation**: The embedding from the wide model is concatenated with the last layer representation of the deep neural network. A final linear layer uses the concatenated representations to predict the reward. 
+- **Last Layer Representation**: The embedding from the wide model is concatenated with the last layer representation of the deep neural network. A final linear layer uses the concatenated representations to predict the reward. 
 
