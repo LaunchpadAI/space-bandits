@@ -24,7 +24,7 @@ The wide network trains an embedding using the user IDs, and the deep network co
 
 - **Concat Reward**: The predicted rewards from the wide and deep network are concatenated and loss is computed on the concatenation. 
 
-- **Linear Combination of Rewards**: The predicted the wide and deep network are combined using a final linear layer. 
+- **Linear Combination of Rewards**: The predicted rewards from the wide and deep network are combined using a final linear layer. 
 
-- **Last Layer Representation**: The embedding from the wide model is concatenated with the last layer representation of the deep neural network. A final linear layer uses the concatenated representations to predict the reward. 
+- **Last Layer Representation**: The embedding from the wide model is concatenated with the last layer representation of the deep neural network. A final linear layer then uses the concatenated representations to predict the reward. 
 
