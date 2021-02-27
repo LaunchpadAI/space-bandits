@@ -522,7 +522,7 @@ class Wide_Deep_Bandits():
         wide_embed_size=100, ## Size of embedding dictionary for the wide model (int)
         wide_embed_dim=64, ## Dimension of embedding for the wide model (int)
         deep_layer_sizes=[50], ## deep_layer_sizes (list of integers): defines deep neural network architecture: n_layers = len(layer_sizes)
-        wd_combine_method = 'concat_representation_llr', ## Method for combining the wide and deep models in the wide+deep model, 'concat_representation_llr' (default) seem to work the best for Bayesian linear regression
+        wd_combine_method = 'concat_representation_llr', ## Method for combining the wide and deep models in the wide+deep model, 'concat_representation_llr' (default) seems to work the best for Bayesian linear regression
         update_freq_nn = 1, ## Frequency to update the model, default updates model for every data point (int)
         update_freq_lr = 1, ## Frequency for updates to bayesian linear regressor (int)
         num_epochs = 1, ## Number of steps to Train for each update (int)
@@ -531,18 +531,13 @@ class Wide_Deep_Bandits():
         b0=6, ## initial beta_0 value (int)
         lambda_prior=0.25, ## lambda prior parameter(float)
         initial_pulls=100, ## number of random pulls before greedy behavior (int)
+        initial_lr=0.1,## initial learning rate for neural network training (float)
+        lr_decay_rate=0.5,## learning rate decay for nn updates (float)
+        reset_lr=True, ## whether to reset learning rate on each nn training (bool)
+        batch_size = 512, ## size of mini-batch to train at each step (int)
+        max_grad_norm=5.0, ## maximum gradient value for gradient clipping (float)
         do_scaling=True, ## whether to automatically scale features (bool)
         name='wide_deep_bandits'):
-      
-        hparams = {
-                    'num_actions':num_actions,
-                    'context_dim':num_features,
-                    'max_grad_norm':5.0,
-                    'initial_pulls':initial_pulls,
-                    'a0':a0,
-                    'b0':b0,
-                    'lambda_prior':lambda_prior
-        }
 
         ## Raise error if model_type is not one of the available models
         possible_models = ['deep','wide','wide_deep']
@@ -559,36 +554,45 @@ class Wide_Deep_Bandits():
         self.wide_embed_dim = wide_embed_dim
         self.wide_embed_size = wide_embed_size
         self.deep_layer_sizes = deep_layer_sizes
+        self.max_grad_norm = max_grad_norm
         self.wd_combine_method = wd_combine_method
         self.do_scaling = do_scaling
-        self.hparams = hparams
-        self.num_actions = self.hparams['num_actions']
-        self.context_dim = self.hparams['context_dim']
+        self.num_actions = num_actions
+        self.context_dim = num_features
+        self.initial_lr = initial_lr
+        self.lr = initial_lr
+        self.lr_decay_rate = lr_decay_rate
+        self.reset_lr = reset_lr
+        self.batch_size = batch_size
         
 
         ## Initialize model and optimizer depeding on model_type
         if self.model_type == 'deep':
-          self.deep_model = Deep_Model(context_size=self.hparams['context_dim'],
+          self.deep_model = Deep_Model(context_size=self.context_dim,
                                        layer_sizes=self.deep_layer_sizes,
-                                       n_action=self.hparams['num_actions'])
-          self.optim = torch.optim.RMSprop(self.deep_model.parameters())
+                                       n_action=self.num_actions)
+          #self.optim = torch.optim.RMSprop(self.deep_model.parameters(), lr=self.initial_lr)
+          self.optim = self.select_optimizer(self.deep_model)
           self.latent_dim = self.deep_layer_sizes[-1]
 
         if self.model_type == 'wide':
           self.wide_model = Wide_Model(embed_size=self.wide_embed_size, 
-                                      n_action=self.hparams['num_actions'], 
+                                      n_action=self.num_actions, 
                                       embed_dim=self.wide_embed_dim)
-          self.optim = torch.optim.RMSprop(self.wide_model.parameters())
+          #self.optim = torch.optim.RMSprop(self.wide_model.parameters(), lr=self.initial_lr)
+          self.optim = self.select_optimizer(self.wide_model)
           self.latent_dim = self.wide_embed_dim
         
 
         if self.model_type == 'wide_deep':
-          self.wide_deep_model = Wide_and_Deep_Model(context_size=self.hparams['context_dim'],
+          self.wide_deep_model = Wide_and_Deep_Model(context_size=self.context_dim,
                                                     deep_layer_sizes=self.deep_layer_sizes,
                                                     embed_size=self.wide_embed_size, 
-                                                    n_action=self.hparams['num_actions'], 
+                                                    n_action=self.num_actions, 
                                                     wide_embed_dim=self.wide_embed_dim) 
-          self.optim = torch.optim.RMSprop(self.wide_deep_model.parameters())
+          #self.optim = torch.optim.RMSprop(self.wide_deep_model.parameters(), lr=self.initial_lr)
+          self.optim = self.select_optimizer(self.wide_deep_model)
+          
 
           ## latent dimension = Num parameters in last layer of deep network + embedding dimension of wide network
           self.latent_dim = self.deep_layer_sizes[-1] + self.wide_embed_dim
@@ -604,49 +608,63 @@ class Wide_Deep_Bandits():
         ## sigmas = standard deviation of the beta_i
 
         ## Gaussian prior for each beta_i
-        self._lambda_prior = self.hparams['lambda_prior']
+        self._lambda_prior = lambda_prior
 
         ## mean values for beta_i
         self.mu = [
             np.zeros(self.latent_dim)
-            for _ in range(self.hparams['num_actions'])
+            for _ in range(self.num_actions)
         ]
 
         ## covarianve matrix, how each latent dimensions of the representation interacts with each other
         ## initialize to identity matrix with 1/lambda_prior on the diagonals
         self.cov = [(1.0 / self.lambda_prior) * np.eye(self.latent_dim)
-                    for _ in range(self.hparams['num_actions'])]
+                    for _ in range(self.num_actions)]
 
         ## precision, large lambda --> less uncertainty for beta_i
         self.precision = [
             self.lambda_prior * np.eye(self.latent_dim)
-            for _ in range(self.hparams['num_actions'])
+            for _ in range(self.num_actions)
         ]
 
         # Inverse Gamma prior for each sigma2_i
-        self._a0 = self.hparams['a0']
-        self._b0 = self.hparams['b0']
+        self._a0 = a0
+        self._b0 = b0
 
-        self.a = [self._a0 for _ in range(self.hparams['num_actions'])]
-        self.b = [self._b0 for _ in range(self.hparams['num_actions'])] 
+        self.a = [self._a0 for _ in range(self.num_actions)]
+        self.b = [self._b0 for _ in range(self.num_actions)] 
 
 
-        self.data_h = ContextualDataset(self.hparams['context_dim'],
-                                        self.hparams['num_actions'],
+        self.data_h = ContextualDataset(self.context_dim,
+                                        self.num_actions,
                                         intercept=False)
         
         self.latent_h = ContextualDataset(
                             self.latent_dim,
-                            self.hparams['num_actions'],
+                            self.num_actions,
                             intercept=False,
         )
         
-        self.initial_pulls = self.hparams['initial_pulls']
+        self.initial_pulls = initial_pulls
 
         ## Keep a dictionary of users that matches user's riid to indexes between 0 and num_users
         ## Initialize dicitonary with a "dummy user" that will be used for prediction when the user has never been seen
         self.user_dict = {0:0} 
         self.current_user_size = 1
+        
+    def select_optimizer(self, model):
+        """Selects optimizer. To be extended (SGLD, KFAC, etc)."""
+        lr = self.initial_lr
+        return torch.optim.RMSprop(model.parameters(), lr=lr)
+    
+    def assign_lr(self, lr=None):
+        """
+        Resets the learning rate to input argument value "lr".
+        """
+        if lr is None:
+            lr = self.lr
+        for param_group in self.optim.param_groups:
+            param_group['lr'] = lr
 
     def get_representation(self, user_idx, context):
         """
@@ -680,7 +698,7 @@ class Wide_Deep_Bandits():
             user_id = torch.tensor(user_id)
         
         if scale:
-            context = context.reshape(-1, self.hparams['context_dim'])
+            context = context.reshape(-1, self.context_dim)
             context = self.data_h.scale_contexts(contexts=context)[0]
         
         user_idx = self.lookup_one_user_idx(user_id)
@@ -690,7 +708,7 @@ class Wide_Deep_Bandits():
           z_context = self.get_representation(user_idx, context).numpy()
 
           ## Compute sampled expected values, intercept is last component of beta
-          vals = [np.dot(self.mu[i], z_context.T) for i in range(self.hparams['num_actions'])]
+          vals = [np.dot(self.mu[i], z_context.T) for i in range(self.num_actions)]
         
           return np.array(vals)
 
@@ -729,7 +747,7 @@ class Wide_Deep_Bandits():
             return self.t % self.num_actions
         else:
             if self.do_scaling:
-                context = context.reshape(-1, self.hparams['context_dim'])
+                context = context.reshape(-1, self.context_dim)
                 context = self.data_h.scale_contexts(contexts=context)[0]
               
             if method == 'forward':
@@ -824,13 +842,19 @@ class Wide_Deep_Bandits():
         """
         #print("Training at time {} for {} steps...".format(self.t, num_steps))
 
-        batch_size = 512
+        batch_size = self.batch_size
         
         data.scale_contexts() ## have to scale the data first if scaled=True in data.get_batch_with_weights()
 
         for step in range(num_steps):
+            ## Use this line to randomly select a batch with size batch_size
             #u, x, y, w = data.get_batch_with_weights(batch_size, scaled=True)
+            
+            ## Use this line to select the most recent update_freq_nn data points 
+            ## (i.e. select the most recent 100 data points if traning every 100 steps), 
+            ## then randomly select the remaining data in batch
             u, x, y, w = data.get_batch_with_weights_recent(batch_size, n_recent=self.update_freq_nn, scaled=True)
+            
             u = self.lookup_user_idxs(u)
 
             ## Training at time step 1 will cause problem if scaled=True, 
@@ -840,6 +864,13 @@ class Wide_Deep_Bandits():
         
 
     def do_step(self, u, x, y, w, step):
+        
+        decay_rate = self.lr_decay_rate
+        base_lr = self.initial_lr
+
+        lr = base_lr * (1 / (1 + (decay_rate * step)))
+        self.assign_lr(lr)
+        
         if self.model_type == 'deep':
           y_hat = self.deep_model.forward(x.float())
         if self.model_type == 'wide':
@@ -855,7 +886,7 @@ class Wide_Deep_Bandits():
         ls = self.loss(y_hat, y.float())
         ls.backward()
 
-        clip = self.hparams['max_grad_norm']
+        clip = self.max_grad_norm
 
         if self.model_type == 'deep':
           torch.nn.utils.clip_grad_norm_(self.deep_model.parameters(), clip)
@@ -867,7 +898,6 @@ class Wide_Deep_Bandits():
         self.optim.step()
         self.optim.zero_grad()
 
-
     def _replace_latent_h(self):
         # Update the latent representation of every datapoint collected so far
         if self.do_scaling:
@@ -878,6 +908,17 @@ class Wide_Deep_Bandits():
         new_z = self.get_representation(user_idx, ctx)
 
         self.latent_h._replace_data(contexts=new_z)
+    
+    def _retrain_nn(self):
+        """Retrain the network on original data (data_h)"""
+        if self.reset_lr:
+            self.assign_lr()
+
+        ## Uncomment following lines to automatically set number of steps according to data length and batch size.
+        #steps = round(self.num_epochs * (len(self.data_h)/self.batch_size))
+        #print(f"training for {steps} steps.")
+        self.train(self.data_h, self.num_epochs)
+        self._replace_latent_h()
 
     def lookup_one_user_idx(self, user_id):
       user_id = user_id.tolist()[0]
@@ -912,7 +953,7 @@ class Wide_Deep_Bandits():
         #    sigma2_s = sigma2_s.reshape(1, -1)
         beta_s = []
         try:
-            for i in range(self.hparams['num_actions']):
+            for i in range(self.num_actions):
                 global mus
                 global covs
                 #mus = np.repeat(self.mu[i][np.newaxis, :], n_rows, axis=0)
@@ -933,7 +974,7 @@ class Wide_Deep_Bandits():
             ## Sampling could fail if covariance is not positive definite
             print('Exception when sampling from {}.'.format(self.name))
             print('Details: {} | {}.'.format(e.message, e.args))
-            for i in range(self.hparams['num_actions']):
+            for i in range(self.num_actions):
                 multivariates = [np.random.multivariate_normal(np.zeros((d)), np.eye(d))]
                 beta_s.append(multivariates)
         beta_s = np.array(beta_s)
@@ -945,7 +986,7 @@ class Wide_Deep_Bandits():
         ## Apply Thompson Sampling
         vals = [
             (beta_s[i, :, :] * z_context).sum(axis=-1)
-            for i in range(self.hparams['num_actions'])
+            for i in range(self.num_actions)
         ]
         return np.array(vals)
               
