@@ -7,6 +7,9 @@ Original file is located at
     https://colab.research.google.com/drive/1uCnB-RQ9lrVOeFb-inOYsnifypGkrRnp
 """
 
+## 02/27/2021 - Implemented initial_lr and lr_weight_decay
+## 02/27/2021 - Implemented separate learning rate and learning rate decay for wide and deep networks
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -531,9 +534,11 @@ class Wide_Deep_Bandits():
         b0=6, ## initial beta_0 value (int)
         lambda_prior=0.25, ## lambda prior parameter(float)
         initial_pulls=100, ## number of random pulls before greedy behavior (int)
-        initial_lr=0.1,## initial learning rate for neural network training (float)
-        lr_decay_rate=0.5,## learning rate decay for nn updates (float)
-        reset_lr=True, ## whether to reset learning rate on each nn training (bool)
+        initial_lr_wide=0.01,## initial learning rate for wide network training (float, default same as torch.optim.RMSProp default)
+        initial_lr_deep=0.01,## initial learning rate for deep network training (float, default same as torch.optim.RMSProp default)
+        lr_decay_rate_wide=0.0,## learning rate decay for wide network updates (float)
+        lr_decay_rate_deep=0.0,## learning rate decay for deep network updates (float)
+        reset_lr=True, ## whether to reset learning rate when retraining network (bool)
         batch_size = 512, ## size of mini-batch to train at each step (int)
         max_grad_norm=5.0, ## maximum gradient value for gradient clipping (float)
         do_scaling=True, ## whether to automatically scale features (bool)
@@ -559,9 +564,12 @@ class Wide_Deep_Bandits():
         self.do_scaling = do_scaling
         self.num_actions = num_actions
         self.context_dim = num_features
-        self.initial_lr = initial_lr
-        self.lr = initial_lr
-        self.lr_decay_rate = lr_decay_rate
+        self.initial_lr_wide = initial_lr_wide
+        self.initial_lr_deep = initial_lr_deep
+        self.lr_wide = initial_lr_wide
+        self.lr_deep = initial_lr_deep
+        self.lr_decay_rate_wide = lr_decay_rate_wide
+        self.lr_decay_rate_deep = lr_decay_rate_deep
         self.reset_lr = reset_lr
         self.batch_size = batch_size
         
@@ -572,7 +580,10 @@ class Wide_Deep_Bandits():
                                        layer_sizes=self.deep_layer_sizes,
                                        n_action=self.num_actions)
           #self.optim = torch.optim.RMSprop(self.deep_model.parameters(), lr=self.initial_lr)
-          self.optim = self.select_optimizer(self.deep_model)
+          param_dict = [{'params': self.deep_model.parameters(), 'lr': self.initial_lr_deep}]
+          self.param_dict = param_dict
+          self.initial_param_dict = param_dict
+          self.optim = self.select_optimizer()
           self.latent_dim = self.deep_layer_sizes[-1]
 
         if self.model_type == 'wide':
@@ -580,7 +591,10 @@ class Wide_Deep_Bandits():
                                       n_action=self.num_actions, 
                                       embed_dim=self.wide_embed_dim)
           #self.optim = torch.optim.RMSprop(self.wide_model.parameters(), lr=self.initial_lr)
-          self.optim = self.select_optimizer(self.wide_model)
+          param_dict = [{'params': self.wide_model.parameters(), 'lr': self.initial_lr_wide}]
+          self.param_dict = param_dict
+          self.initial_param_dict = param_dict
+          self.optim = self.select_optimizer()
           self.latent_dim = self.wide_embed_dim
         
 
@@ -591,8 +605,13 @@ class Wide_Deep_Bandits():
                                                     n_action=self.num_actions, 
                                                     wide_embed_dim=self.wide_embed_dim) 
           #self.optim = torch.optim.RMSprop(self.wide_deep_model.parameters(), lr=self.initial_lr)
-          self.optim = self.select_optimizer(self.wide_deep_model)
-          
+          param_dict = [{'params': self.wide_deep_model.wide_model.parameters(), 'lr': self.initial_lr_wide},
+                        {'params': self.wide_deep_model.deep_model.parameters(), 'lr': self.initial_lr_deep},
+                        {'params': self.wide_deep_model.lr_cred.parameters(), 'lr': 0.01},
+                        {'params': self.wide_deep_model.lr_crep.parameters(), 'lr': 0.01}]
+          self.param_dict = param_dict
+          self.initial_param_dict = param_dict          
+          self.optim = self.select_optimizer()
 
           ## latent dimension = Num parameters in last layer of deep network + embedding dimension of wide network
           self.latent_dim = self.deep_layer_sizes[-1] + self.wide_embed_dim
@@ -652,19 +671,22 @@ class Wide_Deep_Bandits():
         self.user_dict = {0:0} 
         self.current_user_size = 1
         
-    def select_optimizer(self, model):
+    def select_optimizer(self):
         """Selects optimizer. To be extended (SGLD, KFAC, etc)."""
-        lr = self.initial_lr
-        return torch.optim.RMSprop(model.parameters(), lr=lr)
+        return torch.optim.RMSprop(self.param_dict)
     
-    def assign_lr(self, lr=None):
+    def assign_lr(self, reset=False):
         """
-        Resets the learning rate to input argument value "lr".
+        Assign learning rates using current self.param_dict.
+        If reset = True, resets learning rates using self.initial_param_dict
         """
-        if lr is None:
-            lr = self.lr
-        for param_group in self.optim.param_groups:
-            param_group['lr'] = lr
+      
+        if reset:
+            for i in range(len(self.initial_param_dict)):
+                self.optim.param_groups[i]['lr'] = self.initial_param_dict[i]['lr']
+        else:
+            for i in range(len(self.param_dict)):
+                self.optim.param_groups[i]['lr'] = self.param_dict[i]['lr']
 
     def get_representation(self, user_idx, context):
         """
@@ -865,11 +887,23 @@ class Wide_Deep_Bandits():
 
     def do_step(self, u, x, y, w, step):
         
-        decay_rate = self.lr_decay_rate
-        base_lr = self.initial_lr
+        decay_rate_wide = self.lr_decay_rate_wide
+        base_lr_wide = self.initial_lr_wide
+        decay_rate_deep = self.lr_decay_rate_deep
+        base_lr_deep = self.initial_lr_deep
 
-        lr = base_lr * (1 / (1 + (decay_rate * step)))
-        self.assign_lr(lr)
+        self.lr_wide = base_lr_wide * (1 / (1 + (decay_rate_wide * step)))
+        self.lr_deep = base_lr_deep * (1 / (1 + (decay_rate_deep * step)))
+        
+        if self.model_type == 'deep':
+            self.param_dict[0]['lr'] = self.lr_deep
+        if self.model_type == 'wide':
+            self.param_dict[0]['lr'] = self.lr_wide
+        if self.model_type == 'wide_deep':
+            self.param_dict[0]['lr'] = self.lr_wide
+            self.param_dict[1]['lr'] = self.lr_deep
+        
+        self.assign_lr()
         
         if self.model_type == 'deep':
           y_hat = self.deep_model.forward(x.float())
@@ -912,7 +946,7 @@ class Wide_Deep_Bandits():
     def _retrain_nn(self):
         """Retrain the network on original data (data_h)"""
         if self.reset_lr:
-            self.assign_lr()
+            self.assign_lr(reset=True)
 
         ## Uncomment following lines to automatically set number of steps according to data length and batch size.
         #steps = round(self.num_epochs * (len(self.data_h)/self.batch_size))
