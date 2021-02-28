@@ -1,6 +1,6 @@
 ## Wide and Deep Bandits
 
-A modified version of space-bandits that adds a wide component that can take individual user IDs as inputs. The wide network complements the deep neural network by memorizing the individual user behaviors while the deep network makes generalizations based on the context features. Based on the paper [Deep Bayesian Bandits: Exploring in Online Personalized Recommendations](https://arxiv.org/abs/2008.00727) by Guo et al. (2020).
+A modified version of space-bandits that adds a wide component which takes individual user IDs as inputs. The wide network complements the deep neural network by memorizing the individual user behaviors while the deep network makes generalizations based on the context features. Based on the paper [Deep Bayesian Bandits: Exploring in Online Personalized Recommendations](https://arxiv.org/abs/2008.00727) by Guo et al. (2020).
 
 ### Usage
 
