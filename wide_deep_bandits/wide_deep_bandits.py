@@ -323,7 +323,7 @@ class Wide_Deep_Bandits():
         return x
 
     def action(self, user_id, context):
-        ## Select an action based on expected values of reward
+        """Select an action based on expected values of reward"""
         if self.do_scaling:
             context = context.reshape(-1, self.context_dim)
             context = self.data_h.scale_contexts(contexts=context)[0]
@@ -331,7 +331,7 @@ class Wide_Deep_Bandits():
         return np.argmax(vals.cpu().detach().numpy())
 
     def predict(self, user_ids, contexts):
-        """Takes a list or array-like of contexts and batch predicts on them"""
+        """Takes a list of users and list or array-like of contexts and batch predicts on them"""
         contexts = contexts.reshape(-1, self.context_dim)
         if self.do_scaling:
             contexts = self.data_h.scale_contexts(contexts=contexts)
@@ -341,6 +341,7 @@ class Wide_Deep_Bandits():
     def update(self, user_id, context, action, reward):
         """
         Args:
+          user_id: Last observed user
           context: Last observed context.
           action: Last observed action.
           reward: Last observed reward.
@@ -356,7 +357,8 @@ class Wide_Deep_Bandits():
     def fit(self, user_id, contexts, actions, rewards):
         """Inputs bulk data for training.
         Args:
-          contexts: Set of observed contexts.
+          user_id: List of users
+          contexts: Observed contexts.
           actions: Corresponding list of actions.
           rewards: Corresponding list of rewards.
         """
@@ -369,6 +371,37 @@ class Wide_Deep_Bandits():
         self.t += data_length
         #update posterior on ingested data
         self._retrain_nn()
+    
+    
+    def train(self, data, num_steps):
+        """Trains the network for num_steps, using the provided data.
+        Args:
+          data: ContextualDataset object that provides the data.
+          num_steps: Number of minibatches to train the network for.
+        Takes longer to get batch data and train model as the data size increase
+        """
+        #print("Training at time {} for {} steps...".format(self.t, num_steps))
+
+        batch_size = self.batch_size
+        
+        if self.do_scaling == True:
+            data.scale_contexts() ## have to scale the data first if scaled=True in data.get_batch_with_weights()
+
+        for step in range(num_steps):
+            #u, x, y, w = data.get_batch_with_weights(batch_size, scaled=self.do_scaling)
+            u, x, y, w = data.get_batch_with_weights_recent(batch_size, n_recent=self.update_freq_nn, scaled=self.do_scaling)
+            u = self.lookup_user_idx(u)
+
+            u = u.to(device)
+            x = x.to(device)
+            y = y.to(device)
+            w = w.to(device)
+
+            ## Training at time step 1 will cause problem if scaled=True, 
+            ## because standard deviation=0, and scaled_context will equal nan
+            if self.t != 1:
+              self.do_step(u, x, y, w, step)
+              
 
     def do_step(self, u, x, y, w, step):
         ## Set new learning rates
@@ -418,34 +451,6 @@ class Wide_Deep_Bandits():
         self.optim.step()
         self.optim.zero_grad()
 
-    def train(self, data, num_steps):
-        """Trains the network for num_steps, using the provided data.
-        Args:
-          data: ContextualDataset object that provides the data.
-          num_steps: Number of minibatches to train the network for.
-        Takes longer to get batch data and train model as the data size increase
-        """
-        #print("Training at time {} for {} steps...".format(self.t, num_steps))
-
-        batch_size = self.batch_size
-        
-        if self.do_scaling == True:
-            data.scale_contexts() ## have to scale the data first if scaled=True in data.get_batch_with_weights()
-
-        for step in range(num_steps):
-            #u, x, y, w = data.get_batch_with_weights(batch_size, scaled=self.do_scaling)
-            u, x, y, w = data.get_batch_with_weights_recent(batch_size, n_recent=self.update_freq_nn, scaled=self.do_scaling)
-            u = self.lookup_user_idx(u)
-
-            u = u.to(device)
-            x = x.to(device)
-            y = y.to(device)
-            w = w.to(device)
-
-            ## Training at time step 1 will cause problem if scaled=True, 
-            ## because standard deviation=0, and scaled_context will equal nan
-            if self.t != 1:
-              self.do_step(u, x, y, w, step)
     
     def _retrain_nn(self):
         """Retrain the network on original data (data_h)"""
@@ -458,7 +463,7 @@ class Wide_Deep_Bandits():
         self.train(self.data_h, self.num_epochs)
 
     def lookup_user_idx(self, user_id, multiple_users=True):
-      ## Returns a list of user indexes for input to the wide network
+      """Returns a list of user indexes for input to the wide network"""
       user_index = []
 
       if torch.is_tensor(user_id):
@@ -482,7 +487,7 @@ class Wide_Deep_Bandits():
       return torch.tensor(user_index)
     
     def update_user_dict(self, user_id):
-      ## Create/update a lookup dictionary that matches user riid to a user index between 0 and num_users
+      """Create/update a lookup dictionary that matches user IDs to a user indexes between 0 and num_users"""
       if torch.is_tensor(user_id):
         user_id = user_id.tolist()
       if user_id not in self.user_dict:
