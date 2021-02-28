@@ -188,7 +188,7 @@ class Wide_Deep_Bandits():
         wide_embed_size=100, ## Size of embedding dictionary for the wide model
         wide_embed_dim=64, ## Dimension of embedding for the wide model
         wd_combine_method = 'concat_representation_llr', ## Method for combining the wide and deep models in the wide+deep model
-        update_freq_nn = 200, ## Frequency to update the model, default updates model for every data point
+        update_freq_nn = 100, ## Frequency to update the model, default updates model for every data point
         do_scaling = True, ## Whether to scale the contexts
         num_epochs = 1, ## Number of steps to Train for each update
         max_grad_norm=5.0, ## maximum gradient value for gradient clipping (float)
@@ -398,9 +398,9 @@ class Wide_Deep_Bandits():
         
         self.assign_lr()
         
-        print("y = ", y.float()[0])
-        print("y_hat = ", y_hat[0])
-        print()
+        #print("y = ", y.float()[0])
+        #print("y_hat = ", y_hat[0])
+        #print()
 
         y_hat *= w  ## No back propagation on action not taken
         ls = self.loss(y_hat, y.float())
