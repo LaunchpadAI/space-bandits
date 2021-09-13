@@ -14,7 +14,7 @@ reqs= [
     'cython',
     'scikit-learn'
 ]
-version = '0.0.992'
+version = '0.0.993'
 
 setup(
     name='space-bandits',
