@@ -137,6 +137,10 @@ class ContextualDataset(object):
             self.contexts = torch.cat((self.contexts, contexts))
 
         rewards_array = coo_matrix((np.array(rewards), (np.arange(data_length), np.array(actions)))).toarray()
+        n_missing_dims = self.num_actions - rewards_array.shape[1]
+        if n_missing_dims != 0: #case for issue 20
+            missing_dims = np.zeros((rewards_array.shape[0], n_missing_dims))
+            rewards_array = np.concatenate([rewards_array, missing_dims], axis=1)
         rewards_array = torch.tensor(rewards_array).float()
         if self.rewards is None:
             self.rewards = rewards_array

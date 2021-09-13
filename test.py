@@ -332,9 +332,18 @@ class AppTest(unittest.TestCase):
         assert check_torch_cpu()
         return
 
-#    def test_torch_gpu(self):
-#        assert check_torch_gpu()
-#        return
+    def test_issue_20(self):
+        np.random.seed(0)
+
+        model = LinearBandits(initial_pulls=2, num_actions=3, num_features=1)
+        model.fit(
+            contexts=pd.DataFrame(np.random.normal(loc=10, size=100)),
+            actions=#np.array([2] + [0] * 99),
+             #np.array([0] * 100),# doesn't work
+             np.array([1] + [0] * 99), # doesn't work
+            # np.array([2] + [0] * 99) works
+            rewards=np.random.normal(loc=10, size=100),
+        )
 
 if __name__ == '__main__':
     unittest.main()
